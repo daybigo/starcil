@@ -1,0 +1,4 @@
+[authored-from-knowledge; live validation pending]
+Shell command: cargo fmt
+Allow execution?
+  Yes / No

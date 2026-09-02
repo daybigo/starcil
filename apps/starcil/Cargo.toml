@@ -1,0 +1,36 @@
+[package]
+name = "starcil"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "starcil"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+starcil-domain.workspace = true
+starcil-protocol.workspace = true
+starcil-cli.workspace = true
+starcil-platform.workspace = true
+starcil-server.workspace = true
+starcil-host.workspace = true
+starcil-config.workspace = true
+starcil-tui.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+starcil-remote.workspace = true
+starcil-persist.workspace = true
+starcil-update.workspace = true
+semver.workspace = true
+
+# Native folder picker (the "visual cd"). Linux uses zenity/kdialog through
+# Command instead, so the heavyweight GTK backend never builds.
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+rfd = { workspace = true }

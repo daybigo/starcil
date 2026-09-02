@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ubuntu:
+    name: Ubuntu workspace
+    runs-on: ubuntu-24.04
+    env:
+      RUSTUP_TOOLCHAIN: stable-x86_64-unknown-linux-gnu
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+
+      - name: Build workspace
+        run: cargo build --workspace --locked
+
+      - name: Test workspace
+        run: cargo test --workspace --locked
+
+  windows-gnu:
+    name: Windows GNU workspace
+    runs-on: windows-latest
+    env:
+      RUSTUP_TOOLCHAIN: stable-x86_64-pc-windows-gnu
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      # build.ps1 is intentionally machine-local: it points at Cesar's patched
+      # w64devkit paths. GitHub's Windows image supplies GCC/binutils, and CI uses
+      # an ordinary stable GNU Rust host plus direct cargo commands instead.
+      - name: Verify runner GNU linker
+        run: |
+          $gcc = Get-Command gcc -ErrorAction Stop
+          Write-Host "Using $($gcc.Source)"
+          gcc --version
+
+      - name: Install stable GNU Rust
+        run: rustup toolchain install "$env:RUSTUP_TOOLCHAIN" --profile minimal
+
+      - name: Build workspace
+        run: cargo build --workspace --locked
+
+      - name: Test workspace
+        run: cargo test --workspace --locked

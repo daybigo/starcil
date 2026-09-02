@@ -1,0 +1,24 @@
+id = "examples.hello-starcil"
+name = "Hello Starcil"
+version = "0.1.0"
+min_starcil_version = "0.1.0"
+description = "A minimal Windows plugin that demonstrates actions, event hooks, and popup panes."
+platforms = ["windows"]
+
+[[actions]]
+id = "capture-environment"
+title = "Capture the Starcil plugin environment"
+contexts = ["workspace"]
+command = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/capture-environment.ps1"]
+
+[[events]]
+on = "pane.created"
+command = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/on-pane-created.ps1"]
+
+[[panes]]
+id = "hello-popup"
+title = "Hello Starcil"
+placement = "popup"
+width = "70%"
+height = 12
+command = ["cmd.exe", "/d", "/q", "/k", "title Hello Starcil && echo Hello from %STARCIL_PLUGIN_ID%"]

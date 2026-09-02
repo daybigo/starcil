@@ -1,0 +1,17 @@
+[package]
+name = "starcil-agents"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+aho-corasick.workspace = true
+tracing.workspace = true
+starcil-domain.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

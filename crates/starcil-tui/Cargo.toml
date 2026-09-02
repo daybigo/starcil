@@ -1,0 +1,25 @@
+[package]
+name = "starcil-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+mp3 = ["dep:rodio"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+unicode-width.workspace = true
+tokio.workspace = true
+arboard.workspace = true
+tracing.workspace = true
+starcil-domain.workspace = true
+starcil-protocol.workspace = true
+starcil-config.workspace = true
+starcil-platform.workspace = true
+rodio = { workspace = true, optional = true }

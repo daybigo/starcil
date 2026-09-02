@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Starcil — the terminal workspace for AI coding agents</title>
+<meta name="description" content="Starcil is a terminal multiplexer built for AI coding agents: panes, tabs and workspaces for Claude Code, Codex and any CLI agent, with a command line your agents can drive.">
+<meta property="og:title" content="Starcil">
+<meta property="og:description" content="The terminal workspace for AI coding agents.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231a1d22'/%3E%3Cpath d='M16 5l2.6 7.4L26 16l-7.4 3.6L16 27l-2.6-7.4L6 16l7.4-3.6z' fill='%238B5CF6'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #1a1d22;
+    --panel: #15181d;
+    --raised: #20242b;
+    --border: #2b3039;
+    --fg: #e6e8eb;
+    --dim: #8b93a1;
+    --accent: #4a9eff;
+    --brand: #8b5cf6;
+    --ok: #3fb950;
+    --warn: #f0b429;
+    --mono: "JetBrains Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    --sans: -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.55;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre, kbd { font-family: var(--mono); }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(21, 24, 29, .92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav { display: flex; align-items: center; gap: 24px; height: 58px; }
+  .logo { display: flex; align-items: center; gap: 10px; color: var(--fg); font-weight: 700; letter-spacing: .3px; }
+  .logo svg { width: 24px; height: 24px; }
+  .nav .links { margin-left: auto; display: flex; gap: 20px; font-size: 14px; }
+  .nav .links a { color: var(--dim); }
+  .nav .links a:hover { color: var(--fg); text-decoration: none; }
+
+  .hero { padding: 72px 0 40px; display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
+  .hero h1 { font-size: 46px; line-height: 1.1; margin: 0 0 18px; letter-spacing: -.5px; }
+  .hero h1 em { font-style: normal; color: var(--brand); }
+  .hero p.lead { color: var(--dim); font-size: 18px; margin: 0 0 28px; max-width: 46ch; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 11px 18px; border-radius: 8px; font-weight: 600; font-size: 15px;
+    border: 1px solid var(--border); color: var(--fg); background: var(--raised);
+  }
+  .btn:hover { text-decoration: none; border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #0b1220; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn svg { width: 16px; height: 16px; }
+  .hint { color: var(--dim); font-size: 13px; margin-top: 14px; }
+
+  .screen {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.45);
+  }
+  .screen .bar { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .screen .bar i { width: 10px; height: 10px; border-radius: 50%; background: #3a404a; display: block; }
+  .screen pre {
+    margin: 0; padding: 14px 16px; font-size: 12.5px; line-height: 1.45; overflow-x: auto;
+    color: #c9ced6;
+  }
+  .screen .side { color: var(--dim); }
+  .screen .acc { color: var(--accent); }
+  .screen .br { color: var(--brand); }
+  .screen .ok { color: var(--ok); }
+  .screen .wk { color: var(--warn); }
+  .screen .fg { color: var(--fg); font-weight: 600; }
+
+  section { padding: 56px 0; border-top: 1px solid var(--border); }
+  section h2 { font-size: 28px; margin: 0 0 10px; letter-spacing: -.3px; }
+  section p.sub { color: var(--dim); margin: 0 0 28px; max-width: 64ch; }
+
+  .cmd {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; margin: 10px 0 18px;
+  }
+  .cmd code { flex: 1; font-size: 14px; color: var(--fg); overflow-x: auto; white-space: nowrap; }
+  .cmd code .p { color: var(--dim); }
+  .cmd button {
+    background: var(--raised); color: var(--dim); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer; font-family: var(--sans);
+  }
+  .cmd button:hover { color: var(--fg); border-color: var(--accent); }
+  .cmd button.done { color: var(--ok); border-color: var(--ok); }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  .cols h3 { margin: 0 0 6px; font-size: 17px; }
+  .cols h3 span { color: var(--dim); font-weight: 400; font-size: 14px; margin-left: 8px; }
+  .cols p { color: var(--dim); font-size: 14px; margin: 0 0 6px; }
+  .assets { list-style: none; padding: 0; margin: 6px 0 0; font-size: 14px; }
+  .assets li { padding: 4px 0; }
+  .assets code { color: var(--dim); font-size: 13px; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px;
+  }
+  .card h3 { margin: 0 0 8px; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+  .card h3 b { color: var(--brand); font-family: var(--mono); font-weight: 700; }
+  .card p { margin: 0; color: var(--dim); font-size: 14px; }
+  .card code { color: var(--fg); font-size: 13px; background: var(--raised); padding: 1px 5px; border-radius: 4px; }
+
+  pre.block {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px; font-size: 13.5px; line-height: 1.55; overflow-x: auto; color: var(--fg);
+    margin: 0;
+  }
+  pre.block .c { color: var(--dim); }
+  pre.block .k { color: var(--accent); }
+
+  .keys { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .keys td { padding: 8px 10px; border-top: 1px solid var(--border); vertical-align: top; }
+  .keys td:first-child { white-space: nowrap; color: var(--fg); width: 38%; }
+  .keys td:last-child { color: var(--dim); }
+  kbd {
+    display: inline-block; padding: 1px 6px; border-radius: 5px; font-size: 12.5px;
+    background: var(--raised); border: 1px solid var(--border); color: var(--fg);
+  }
+
+  footer { border-top: 1px solid var(--border); padding: 28px 0 40px; color: var(--dim); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; }
+  footer .wrap span:last-child { margin-left: auto; }
+
+  @media (max-width: 860px) {
+    .hero { grid-template-columns: 1fr; padding-top: 44px; }
+    .hero h1 { font-size: 36px; }
+    .cols, .grid { grid-template-columns: 1fr; }
+    .nav .links { gap: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="#">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#15181d"/><path d="M16 5l2.6 7.4L26 16l-7.4 3.6L16 27l-2.6-7.4L6 16l7.4-3.6z" fill="#8b5cf6"/></svg>
+      Starcil
+    </a>
+    <nav class="links">
+      <a href="#install">Install</a>
+      <a href="#features">Features</a>
+      <a href="#agents">For agents</a>
+      <a href="#composer">Composer</a>
+      <a href="https://github.com/daybigo/starcil">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <div>
+      <h1>The terminal workspace for <em>AI coding agents</em>.</h1>
+      <p class="lead">Panes, tabs and workspaces for Claude Code, Codex and any other CLI agent — with a command line the agents themselves can drive to split, prompt, wait and coordinate.</p>
+      <div class="actions">
+        <a class="btn primary" href="#install">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1v8.6l2.8-2.8 1 1L8 11.6 4.2 7.8l1-1L8 9.6V1zM2 12h12v2H2z"/></svg>
+          Install on Windows
+        </a>
+        <a class="btn" href="https://github.com/daybigo/starcil/releases/latest">Releases</a>
+        <a class="btn" href="https://github.com/daybigo/starcil">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 005.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 014 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          Source
+        </a>
+      </div>
+      <p class="hint">Windows 10/11, x86_64. Open source under the MIT license.</p>
+    </div>
+
+    <div class="screen" aria-label="Starcil screenshot rendered as text">
+      <div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="side"> ◫  Workspaces        </span>│<span class="acc"> starcil </span> api   +
+<span class="side"> 1 starcil        ●   </span>│╭ claude ─────────────────────────────────────╮
+<span class="side">   api                </span>││ <span class="br">✴</span> Read crates/starcil-tui/src/composer.rs     │
+<span class="side">                      </span>││ <span class="br">✴</span> Edit composer.rs                            │
+<span class="side">                      </span>││                                              │
+<span class="side">                      </span>││ <span class="fg">❯</span> run the e2e and fix whatever fails          │
+<span class="side"> new           menu   </span>││                                              │
+<span class="side">──────────────────────</span>│╰──────────────────────────────────────────────╯
+<span class="side">        agents        </span>│╭ codex ──────────────────────────────────────╮
+<span class="side"> </span><span class="wk">⠹</span><span class="side"> reviewer·claude     </span>││ <span class="ok">•</span> Working (2m 14s · esc to interrupt)          │
+<span class="side"> </span><span class="ok">✓</span><span class="side"> worker·codex        </span>││                                              │
+<span class="side">                      </span>│╰──────────────────────────────────────────────╯</pre>
+    </div>
+  </div>
+
+  <section id="install">
+    <h2>Install</h2>
+    <p class="sub">One command downloads the latest release, verifies its SHA-256 checksum, puts <code>starcil</code> on your PATH and leaves your config alone. Run it again to upgrade.</p>
+
+    <div class="cols">
+      <div>
+        <h3>Windows <span>PowerShell</span></h3>
+        <div class="cmd"><code><span class="p">PS&gt;</span> irm https://daybigo.github.io/starcil/install.ps1 | iex</code><button data-copy="irm https://daybigo.github.io/starcil/install.ps1 | iex">Copy</button></div>
+        <p>Prefer a file? Download the zip, unpack <code>starcil.exe</code> anywhere on your PATH.</p>
+        <ul class="assets">
+          <li><a href="https://github.com/daybigo/starcil/releases/latest/download/starcil-x86_64-pc-windows-gnu.zip">starcil-x86_64-pc-windows-gnu.zip</a> <code>latest</code></li>
+          <li><a href="https://github.com/daybigo/starcil/releases/latest/download/SHA256SUMS">SHA256SUMS</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Linux &amp; macOS <span>shell</span></h3>
+        <div class="cmd"><code><span class="p">$</span> curl -fsSL https://daybigo.github.io/starcil/install.sh | sh</code><button data-copy="curl -fsSL https://daybigo.github.io/starcil/install.sh | sh">Copy</button></div>
+        <p>Installs into <code>~/.local/bin</code>. Binaries for these platforms are published by the release workflow; Windows is where Starcil is used every day.</p>
+        <ul class="assets">
+          <li><a href="https://github.com/daybigo/starcil/releases">All release assets</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="sub" style="margin-top:22px">Then open a terminal and run <code>starcil</code>. A named session (<code>starcil --session work</code>) gets its own server and workspace tree. Starcil checks GitHub for new releases on start and asks before installing one.</p>
+  </section>
+
+  <section id="features">
+    <h2>Built for the way agents work</h2>
+    <p class="sub">Starcil is a multiplexer first: a headless server owns the terminals, the TUI is a client, and every action is available from a CLI and a socket API.</p>
+    <div class="grid">
+      <div class="card">
+        <h3><b>◫</b> Workspaces, tabs, panes</h3>
+        <p>Split, resize, zoom, drag tabs to reorder, name everything. Sessions survive a closed terminal and restore on the next launch, in the directory each pane was in.</p>
+      </div>
+      <div class="card">
+        <h3><b>✴</b> Agent detection</h3>
+        <p>Claude Code, Codex, Gemini, OpenCode, Copilot and 16 more CLIs are recognized when they start in a pane. The sidebar shows who is working, idle or blocked on a question.</p>
+      </div>
+      <div class="card">
+        <h3><b>❯</b> One place to type</h3>
+        <p>Each shell pane has a composer with Tab completion, history and shell-style editing keys. Type below, see the output above; a dock launches your agents in one click.</p>
+      </div>
+      <div class="card">
+        <h3><b>$</b> A CLI for agents</h3>
+        <p><code>starcil pane split</code>, <code>starcil agent start</code>, <code>starcil agent prompt --wait</code>: an agent inside a pane can spawn peers, brief them and collect results.</p>
+      </div>
+      <div class="card">
+        <h3><b>⟳</b> Hooks and resume</h3>
+        <p>Claude Code and Codex hooks report status without screen scraping. Sessions can be resumed natively. Worktrees open as their own workspace.</p>
+      </div>
+      <div class="card">
+        <h3><b>⌘</b> Mouse, themes, keys</h3>
+        <p>Full mouse support (also under Warp), 12 themes plus overrides, a configurable keymap, sounds for state changes, and an in-app settings editor.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="agents">
+    <h2>Let the agent run the fleet</h2>
+    <p class="sub">Starcil ships its own skill: <code>starcil --skill</code> prints the instructions an agent needs to split panes, start peers, hand them briefs and wait for results. Install it once for Claude Code with the <code>skills</code> CLI, or paste the output into any agent.</p>
+<pre class="block"><span class="c"># from inside a Starcil pane</span>
+<span class="k">starcil</span> pane split --current --direction right --no-focus
+<span class="k">starcil</span> agent start reviewer --kind codex --pane w1:p2
+<span class="k">starcil</span> agent prompt reviewer "review the diff in this repo, write findings to REVIEW.txt" --wait
+<span class="k">starcil</span> pane read w1:p2 --source recent --lines 40
+
+<span class="c"># teach Claude Code the skill, once</span>
+npx skills add daybigo/starcil --skill starcil -g</pre>
+  </section>
+
+  <section id="composer">
+    <h2>The composer</h2>
+    <p class="sub">The input at the bottom of every shell pane is a real line editor. Nothing reaches the shell until Enter, so what you see is exactly what runs.</p>
+    <table class="keys">
+      <tr><td><kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd></td><td>complete paths against the pane's live directory, or commands from PATH; repeat to cycle</td></tr>
+      <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>walk the history, filtered by what you typed; seeded from your shell's own history</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>R</kbd></td><td>incremental history search</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>←</kbd> <kbd>Ctrl</kbd>+<kbd>→</kbd> <kbd>Ctrl</kbd>+<kbd>W</kbd> <kbd>Ctrl</kbd>+<kbd>U</kbd> <kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>move and delete by word or to the ends of the line</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>V</kbd></td><td>paste into the draft; a multi-line paste runs line by line</td></tr>
+      <tr><td><kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>9</kbd></td><td>launch a dock agent in the current pane</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd> <kbd>Ctrl</kbd>+<kbd>L</kbd> <kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>reach the shell when there is nothing drafted</td></tr>
+    </table>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Starcil · MIT license</span>
+    <a href="https://github.com/daybigo/starcil">GitHub</a>
+    <a href="https://github.com/daybigo/starcil/releases">Releases</a>
+    <a href="https://github.com/daybigo/starcil/issues">Issues</a>
+    <span>Built in Rust. Runs on Windows today; Linux and macOS builds ship with each release.</span>
+  </div>
+</footer>
+
+<script>
+  document.querySelectorAll('button[data-copy]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var text = button.getAttribute('data-copy');
+      var done = function () {
+        button.textContent = 'Copied';
+        button.classList.add('done');
+        setTimeout(function () { button.textContent = 'Copy'; button.classList.remove('done'); }, 1600);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () {});
+      } else {
+        var area = document.createElement('textarea');
+        area.value = text; document.body.appendChild(area); area.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(area);
+      }
+    });
+  });
+</script>
+</body>
+</html>

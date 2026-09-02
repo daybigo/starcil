@@ -1,0 +1,141 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            toolchain: stable-x86_64-pc-windows-gnu
+            target: x86_64-pc-windows-gnu
+            asset: starcil-x86_64-pc-windows-gnu.exe
+            windows: true
+          - runner: ubuntu-24.04
+            toolchain: stable-x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-gnu
+            asset: starcil-x86_64-unknown-linux-gnu
+            windows: false
+          - runner: ubuntu-24.04-arm
+            toolchain: stable-aarch64-unknown-linux-gnu
+            target: aarch64-unknown-linux-gnu
+            asset: starcil-aarch64-unknown-linux-gnu
+            windows: false
+          - runner: macos-15-intel
+            toolchain: stable-x86_64-apple-darwin
+            target: x86_64-apple-darwin
+            asset: starcil-x86_64-apple-darwin
+            windows: false
+          - runner: macos-15
+            toolchain: stable-aarch64-apple-darwin
+            target: aarch64-apple-darwin
+            asset: starcil-aarch64-apple-darwin
+            windows: false
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Verify Windows GNU linker
+        if: matrix.windows
+        shell: pwsh
+        run: |
+          $gcc = Get-Command gcc -ErrorAction Stop
+          Write-Host "Using $($gcc.Source)"
+          gcc --version
+
+      - name: Install target-native stable Rust
+        run: rustup toolchain install "${{ matrix.toolchain }}" --profile minimal
+
+      - name: Build release binary
+        run: cargo +${{ matrix.toolchain }} build --locked --release --package starcil --target ${{ matrix.target }}
+
+      - name: Package Windows assets
+        if: matrix.windows
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          $binary = "target/${{ matrix.target }}/release/starcil.exe"
+          if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
+              throw "Missing release binary: $binary"
+          }
+          Copy-Item -LiteralPath $binary -Destination "dist/${{ matrix.asset }}"
+          Compress-Archive -LiteralPath $binary -DestinationPath "dist/starcil-x86_64-pc-windows-gnu.zip"
+
+      - name: Package Unix asset
+        if: ${{ ! matrix.windows }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/starcil" "dist/${{ matrix.asset }}"
+          chmod 0755 "dist/${{ matrix.asset }}"
+
+      - name: Upload platform assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-24.04
+    env:
+      # Default: publish back to this repository using the automatic token.
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Cross-repository placeholder, if ownership changes later:
+      # GH_REPO: owner/starcil
+      # GH_TOKEN: ${{ secrets.STARCIL_RELEASE_TOKEN }}
+    steps:
+      - name: Download platform assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          mapfile -t assets < <(find . -maxdepth 1 -type f -name 'starcil-*' -printf '%f\n' | sort)
+          if [[ ${#assets[@]} -ne 6 ]]; then
+            printf 'expected 6 release assets, found %s\n' "${#assets[@]}" >&2
+            printf '%s\n' "${assets[@]}" >&2
+            exit 1
+          fi
+          sha256sum "${assets[@]}" > SHA256SUMS
+
+      - name: Publish tag assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A release may already exist for the tag (created by hand with the
+          # Windows build): add the platform assets to it, replacing any with
+          # the same name, instead of failing.
+          if gh release view "$GITHUB_REF_NAME" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GH_REPO" --clobber
+            exit 0
+          fi
+          release_flags=(--verify-tag --generate-notes)
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            release_flags+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GH_REPO" \
+            --title "Starcil $GITHUB_REF_NAME" \
+            "${release_flags[@]}"

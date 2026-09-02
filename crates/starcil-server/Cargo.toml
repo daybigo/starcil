@@ -1,0 +1,27 @@
+[package]
+name = "starcil-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+starcil-domain.workspace = true
+starcil-protocol.workspace = true
+starcil-agents.workspace = true
+starcil-platform.workspace = true
+starcil-worktree.workspace = true
+starcil-integrations.workspace = true
+starcil-config.workspace = true
+starcil-plugins.workspace = true
+starcil-persist.workspace = true
+regex-automata.workspace = true
+
+[dev-dependencies]
+starcil-testkit.workspace = true
+tempfile.workspace = true

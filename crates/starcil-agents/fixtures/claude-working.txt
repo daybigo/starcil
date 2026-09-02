@@ -1,0 +1,9 @@
+[authored-from-knowledge; live validation pending]
+I will inspect the parser and update the implementation.
+
+✻ Cogitating… (esc to interrupt · 12s · ↓ 1.2k tokens)
+
+──────────────────────────────────────────────
+❯
+──────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)

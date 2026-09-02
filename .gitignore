@@ -1,0 +1,16 @@
+/target
+/.fleet
+/_reference
+*.log
+_secrets/
+
+# Private hand-off and design notes, never published. The one markdown that
+# ships is the agent skill: the binary embeds it (`starcil --skill`).
+*.md
+!/skills/starcil/SKILL.md
+/docs/
+# Machine-local build wrapper (patched GNU toolchain paths) and probe output.
+/build.ps1
+/probe-mouse.txt
+/tests/e2e/campaign-output.txt
+/dist/

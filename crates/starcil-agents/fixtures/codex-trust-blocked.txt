@@ -1,0 +1,4 @@
+[authored-from-knowledge; live validation pending]
+Do you trust the contents of this directory?
+  1. Yes, continue
+  2. No, exit

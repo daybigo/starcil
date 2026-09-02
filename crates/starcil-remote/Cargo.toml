@@ -1,0 +1,23 @@
+[package]
+name = "starcil-remote"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+sha2.workspace = true
+starcil-protocol.workspace = true
+starcil-platform.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[[test]]
+name = "fake_ssh"
+path = "tests/fake_ssh.rs"
+harness = false

@@ -1,0 +1,276 @@
+version = 1
+
+[[agents]]
+kind = "pi"
+process_name_patterns = ["pi"]
+launch_command_hints = ["pi"]
+osc_title_patterns = ["Pi"]
+
+[[agents]]
+kind = "claude"
+process_name_patterns = ["claude", "claude-code"]
+launch_command_hints = ["claude", "claude-code"]
+osc_title_patterns = ["Claude Code", "Claude"]
+
+[[agents.screen_rules]]
+id = "claude.blocked.permission"
+state = "blocked"
+matcher = "substring"
+pattern = "Do you want to"
+
+[[agents.screen_rules]]
+id = "claude.blocked.allow"
+state = "blocked"
+matcher = "substring"
+pattern = "Allow this action?"
+
+# The spinner glyph (✻) is NOT a working signal: Claude Code reuses it in the
+# turn summary ("✻ Cogitated for 5m 10s · done 2:17 p.m."), which kept panes
+# "working" forever. The interrupt hint only shows while a turn runs.
+[[agents.screen_rules]]
+id = "claude.working.interrupt"
+state = "working"
+matcher = "substring"
+pattern = "esc to interrupt"
+
+# Substring, not literal: the input box reads "❯ <draft>" while the user types.
+[[agents.screen_rules]]
+id = "claude.idle.composer"
+state = "idle"
+matcher = "substring"
+pattern = "❯"
+
+[[agents]]
+kind = "codex"
+process_name_patterns = ["codex"]
+launch_command_hints = ["codex"]
+osc_title_patterns = ["Codex"]
+
+[[agents.screen_rules]]
+id = "codex.blocked.trust"
+state = "blocked"
+matcher = "substring"
+pattern = "Do you trust the contents of this directory?"
+
+[[agents.screen_rules]]
+id = "codex.blocked.update"
+state = "blocked"
+matcher = "substring"
+pattern = "Update available. Install now?"
+
+[[agents.screen_rules]]
+id = "codex.working.interrupt"
+state = "working"
+matcher = "substring"
+pattern = "Esc to interrupt"
+
+[[agents.screen_rules]]
+id = "codex.working.status"
+state = "working"
+matcher = "substring"
+pattern = "• Working"
+
+# Substring for the same reason as claude's: "› <draft>" is still idle.
+[[agents.screen_rules]]
+id = "codex.idle.composer"
+state = "idle"
+matcher = "substring"
+pattern = "›"
+
+[[agents]]
+kind = "gemini"
+process_name_patterns = ["gemini"]
+launch_command_hints = ["gemini"]
+osc_title_patterns = ["Gemini CLI", "Gemini"]
+
+[[agents.screen_rules]]
+id = "gemini.blocked.execution"
+state = "blocked"
+matcher = "substring"
+pattern = "Allow execution?"
+
+[[agents.screen_rules]]
+id = "gemini.blocked.change"
+state = "blocked"
+matcher = "substring"
+pattern = "Apply this change?"
+
+[[agents.screen_rules]]
+id = "gemini.working.cancel"
+state = "working"
+matcher = "substring"
+pattern = "Press Esc to cancel"
+
+[[agents.screen_rules]]
+id = "gemini.working.spinner"
+state = "working"
+matcher = "substring"
+pattern = "⠋"
+
+[[agents.screen_rules]]
+id = "gemini.idle.composer"
+state = "idle"
+matcher = "literal"
+pattern = ">"
+
+[[agents]]
+kind = "cursor"
+process_name_patterns = ["cursor-agent"]
+launch_command_hints = ["cursor-agent"]
+osc_title_patterns = ["Cursor Agent"]
+
+[[agents]]
+kind = "devin"
+process_name_patterns = ["devin"]
+launch_command_hints = ["devin"]
+osc_title_patterns = ["Devin"]
+
+[[agents]]
+kind = "agy"
+process_name_patterns = ["agy", "antigravity-cli"]
+launch_command_hints = ["agy", "antigravity-cli"]
+osc_title_patterns = ["Antigravity"]
+
+[[agents]]
+kind = "cline"
+process_name_patterns = ["cline"]
+launch_command_hints = ["cline"]
+osc_title_patterns = ["Cline"]
+
+[[agents]]
+kind = "omp"
+process_name_patterns = ["omp"]
+launch_command_hints = ["omp"]
+osc_title_patterns = ["OMP"]
+
+[[agents]]
+kind = "mastracode"
+process_name_patterns = ["mastracode"]
+launch_command_hints = ["mastracode"]
+osc_title_patterns = ["MastraCode"]
+
+[[agents]]
+kind = "opencode"
+process_name_patterns = ["opencode"]
+launch_command_hints = ["opencode"]
+osc_title_patterns = ["OpenCode"]
+
+[[agents]]
+kind = "copilot"
+process_name_patterns = ["copilot"]
+launch_command_hints = ["copilot"]
+osc_title_patterns = ["GitHub Copilot"]
+
+[[agents]]
+kind = "kimi"
+process_name_patterns = ["kimi"]
+launch_command_hints = ["kimi"]
+osc_title_patterns = ["Kimi Code"]
+
+[[agents]]
+kind = "kiro"
+process_name_patterns = ["kiro-cli", "kiro"]
+launch_command_hints = ["kiro-cli", "kiro"]
+osc_title_patterns = ["Kiro"]
+
+[[agents]]
+kind = "droid"
+process_name_patterns = ["droid"]
+launch_command_hints = ["droid"]
+osc_title_patterns = ["Droid"]
+
+[[agents]]
+kind = "amp"
+process_name_patterns = ["amp"]
+launch_command_hints = ["amp"]
+osc_title_patterns = ["Amp"]
+
+[[agents]]
+kind = "grok"
+process_name_patterns = ["grok"]
+launch_command_hints = ["grok"]
+osc_title_patterns = ["Grok"]
+
+[[agents]]
+kind = "hermes"
+process_name_patterns = ["hermes"]
+launch_command_hints = ["hermes"]
+osc_title_patterns = ["Hermes Agent"]
+
+[[agents]]
+kind = "kilo"
+process_name_patterns = ["kilo"]
+launch_command_hints = ["kilo"]
+osc_title_patterns = ["Kilo Code"]
+
+[[agents]]
+kind = "qodercli"
+process_name_patterns = ["qodercli"]
+launch_command_hints = ["qodercli"]
+osc_title_patterns = ["Qoder CLI"]
+
+[[agents]]
+kind = "maki"
+process_name_patterns = ["maki"]
+launch_command_hints = ["maki"]
+osc_title_patterns = ["Maki"]
+
+[[generic_rules]]
+id = "generic.blocked.yes-no-parens"
+state = "blocked"
+matcher = "substring"
+pattern = "(y/n)"
+
+[[generic_rules]]
+id = "generic.blocked.yes-no-brackets"
+state = "blocked"
+matcher = "substring"
+pattern = "[y/n]"
+
+[[generic_rules]]
+id = "generic.blocked.password"
+state = "blocked"
+matcher = "substring"
+pattern = "password:"
+
+[[generic_rules]]
+id = "generic.blocked.passphrase"
+state = "blocked"
+matcher = "substring"
+pattern = "passphrase:"
+
+[[generic_rules]]
+id = "generic.blocked.press-any-key"
+state = "blocked"
+matcher = "substring"
+pattern = "press any key"
+
+[[generic_rules]]
+id = "generic.blocked.trust"
+state = "blocked"
+matcher = "substring"
+pattern = "Do you trust"
+
+[[generic_rules]]
+id = "generic.blocked.selection-number"
+state = "blocked"
+matcher = "substring"
+pattern = "❯ 1."
+
+[[generic_rules]]
+id = "generic.blocked.selection-yes"
+state = "blocked"
+matcher = "substring"
+pattern = "❯ Yes"
+
+[[generic_rules]]
+id = "generic.blocked.selection-allow"
+state = "blocked"
+matcher = "substring"
+pattern = "❯ Allow"
+
+[[generic_rules]]
+id = "generic.blocked.selection-continue"
+state = "blocked"
+matcher = "substring"
+pattern = "❯ Continue"

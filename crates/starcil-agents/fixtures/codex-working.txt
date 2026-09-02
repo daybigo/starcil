@@ -1,0 +1,3 @@
+[authored-from-knowledge; live validation pending]
+• Working (12s • Esc to interrupt)
+  Inspecting crates/starcil-agents/src

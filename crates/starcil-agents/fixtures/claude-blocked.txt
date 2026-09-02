@@ -1,0 +1,5 @@
+[authored-from-knowledge; live validation pending]
+Claude wants to edit src/config.rs
+Do you want to make this edit?
+  1. Yes
+  2. No

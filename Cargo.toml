@@ -1,0 +1,81 @@
+[workspace]
+resolver = "2"
+members = [
+  "apps/starcil",
+  "crates/starcil-domain",
+  "crates/starcil-protocol",
+  "crates/starcil-cli",
+  "crates/starcil-testkit",
+  "crates/starcil-platform",
+  "crates/starcil-terminal",
+  "crates/starcil-server",
+  "crates/starcil-config",
+  "crates/starcil-tui",
+  "crates/starcil-agents",
+  "crates/starcil-integrations",
+  "crates/starcil-worktree",
+  "crates/starcil-remote",
+  "crates/starcil-plugins",
+  "crates/starcil-update",
+  "crates/starcil-host",
+  "crates/starcil-persist",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Starcil — terminal workspace manager for AI coding agents"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+toml_edit = "0.22"
+thiserror = "2"
+anyhow = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+portable-pty = "0.9"
+vt100 = "0.16"
+rfd = { version = "0.15", default-features = false }
+ratatui = "0.30"
+crossterm = "0.29"
+unicode-width = "0.2"
+arboard = "3"
+schemars = "0.8"
+aho-corasick = "1"
+regex-automata = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+notify-rust = "4"
+ureq = { version = "2", features = ["json"] }
+semver = "1"
+sha2 = "0.10"
+tempfile = "3"
+rodio = { version = "0.20", default-features = false, features = ["mp3", "wav"] }
+
+starcil-domain = { path = "crates/starcil-domain" }
+starcil-protocol = { path = "crates/starcil-protocol" }
+starcil-cli = { path = "crates/starcil-cli" }
+starcil-testkit = { path = "crates/starcil-testkit" }
+starcil-platform = { path = "crates/starcil-platform" }
+starcil-terminal = { path = "crates/starcil-terminal" }
+starcil-server = { path = "crates/starcil-server" }
+starcil-config = { path = "crates/starcil-config" }
+starcil-tui = { path = "crates/starcil-tui" }
+starcil-agents = { path = "crates/starcil-agents" }
+starcil-integrations = { path = "crates/starcil-integrations" }
+starcil-worktree = { path = "crates/starcil-worktree" }
+starcil-remote = { path = "crates/starcil-remote" }
+starcil-plugins = { path = "crates/starcil-plugins" }
+starcil-update = { path = "crates/starcil-update" }
+starcil-host = { path = "crates/starcil-host" }
+starcil-persist = { path = "crates/starcil-persist" }
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1
