@@ -75,7 +75,7 @@
   .screen .bar { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
   .screen .bar i { width: 10px; height: 10px; border-radius: 50%; background: #3a404a; display: block; }
   .screen pre {
-    margin: 0; padding: 14px 16px; font-size: 12.5px; line-height: 1.45; overflow-x: auto;
+    margin: 0; padding: 14px 16px; font-size: 11.5px; line-height: 1.45; overflow-x: auto;
     color: #c9ced6;
   }
   .screen .side { color: var(--dim); }
@@ -189,17 +189,17 @@
     <div class="screen" aria-label="Starcil screenshot rendered as text">
       <div class="bar"><i></i><i></i><i></i></div>
 <pre><span class="side"> ◫  Workspaces        </span>│<span class="acc"> starcil </span> api   +
-<span class="side"> 1 starcil        ●   </span>│╭ claude ─────────────────────────────────────╮
-<span class="side">   api                </span>││ <span class="br">✴</span> Read crates/starcil-tui/src/composer.rs     │
-<span class="side">                      </span>││ <span class="br">✴</span> Edit composer.rs                            │
-<span class="side">                      </span>││                                              │
-<span class="side">                      </span>││ <span class="fg">❯</span> run the e2e and fix whatever fails          │
-<span class="side"> new           menu   </span>││                                              │
-<span class="side">──────────────────────</span>│╰──────────────────────────────────────────────╯
-<span class="side">        agents        </span>│╭ codex ──────────────────────────────────────╮
-<span class="side"> </span><span class="wk">⠹</span><span class="side"> reviewer·claude     </span>││ <span class="ok">•</span> Working (2m 14s · esc to interrupt)          │
-<span class="side"> </span><span class="ok">✓</span><span class="side"> worker·codex        </span>││                                              │
-<span class="side">                      </span>│╰──────────────────────────────────────────────╯</pre>
+<span class="side"> 1 starcil        ●   </span>│╭ claude ────────────────────────────╮
+<span class="side">   api                </span>││ <span class="br">✴</span> Read src/composer.rs             │
+<span class="side">                      </span>││ <span class="br">✴</span> Edit composer.rs                 │
+<span class="side">                      </span>││                                    │
+<span class="side">                      </span>││ <span class="fg">❯</span> run the e2e, fix what fails      │
+<span class="side"> new           menu   </span>││                                    │
+<span class="side">──────────────────────</span>│╰────────────────────────────────────╯
+<span class="side">        agents        </span>│╭ codex ─────────────────────────────╮
+<span class="side"> </span><span class="wk">⠹</span><span class="side"> reviewer·claude    </span>││ <span class="ok">•</span> Working (2m 14s · esc to stop)   │
+<span class="side"> </span><span class="ok">✓</span><span class="side"> worker·codex       </span>││                                    │
+<span class="side">                      </span>│╰────────────────────────────────────╯</pre>
     </div>
   </div>
 
@@ -218,9 +218,8 @@
         </ul>
       </div>
       <div>
-        <h3>Linux &amp; macOS <span>shell</span></h3>
-        <div class="cmd"><code><span class="p">$</span> curl -fsSL https://daybigo.github.io/starcil/install.sh | sh</code><button data-copy="curl -fsSL https://daybigo.github.io/starcil/install.sh | sh">Copy</button></div>
-        <p>Installs into <code>~/.local/bin</code>. Binaries for these platforms are published by the release workflow; Windows is where Starcil is used every day.</p>
+        <h3>Linux &amp; macOS <span>not yet</span></h3>
+        <p>Starcil's server and client talk over Windows named pipes today. The Unix socket transport is next on the list; once it lands, the release workflow publishes Linux and macOS binaries and <code>install.sh</code> picks them up.</p>
         <ul class="assets">
           <li><a href="https://github.com/daybigo/starcil/releases">All release assets</a></li>
         </ul>
@@ -295,7 +294,7 @@ npx skills add daybigo/starcil --skill starcil -g</pre>
     <a href="https://github.com/daybigo/starcil">GitHub</a>
     <a href="https://github.com/daybigo/starcil/releases">Releases</a>
     <a href="https://github.com/daybigo/starcil/issues">Issues</a>
-    <span>Built in Rust. Runs on Windows today; Linux and macOS builds ship with each release.</span>
+    <span>Built in Rust. Windows today; Linux and macOS are on the roadmap.</span>
   </div>
 </footer>
 

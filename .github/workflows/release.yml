@@ -13,6 +13,13 @@ jobs:
     name: Build ${{ matrix.target }}
     strategy:
       fail-fast: false
+      # Windows only until the Unix-socket transport lands (the server and
+      # client speak Windows named pipes today). The Linux/macOS entries:
+      #   ubuntu-24.04      x86_64-unknown-linux-gnu   starcil-x86_64-unknown-linux-gnu
+      #   ubuntu-24.04-arm  aarch64-unknown-linux-gnu  starcil-aarch64-unknown-linux-gnu
+      #   macos-15-intel    x86_64-apple-darwin        starcil-x86_64-apple-darwin
+      #   macos-15          aarch64-apple-darwin       starcil-aarch64-apple-darwin
+      # with `windows: false`, and the asset count below goes back to 6.
       matrix:
         include:
           - runner: windows-latest
@@ -20,26 +27,6 @@ jobs:
             target: x86_64-pc-windows-gnu
             asset: starcil-x86_64-pc-windows-gnu.exe
             windows: true
-          - runner: ubuntu-24.04
-            toolchain: stable-x86_64-unknown-linux-gnu
-            target: x86_64-unknown-linux-gnu
-            asset: starcil-x86_64-unknown-linux-gnu
-            windows: false
-          - runner: ubuntu-24.04-arm
-            toolchain: stable-aarch64-unknown-linux-gnu
-            target: aarch64-unknown-linux-gnu
-            asset: starcil-aarch64-unknown-linux-gnu
-            windows: false
-          - runner: macos-15-intel
-            toolchain: stable-x86_64-apple-darwin
-            target: x86_64-apple-darwin
-            asset: starcil-x86_64-apple-darwin
-            windows: false
-          - runner: macos-15
-            toolchain: stable-aarch64-apple-darwin
-            target: aarch64-apple-darwin
-            asset: starcil-aarch64-apple-darwin
-            windows: false
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Check out source
@@ -113,8 +100,8 @@ jobs:
           set -euo pipefail
           cd dist
           mapfile -t assets < <(find . -maxdepth 1 -type f -name 'starcil-*' -printf '%f\n' | sort)
-          if [[ ${#assets[@]} -ne 6 ]]; then
-            printf 'expected 6 release assets, found %s\n' "${#assets[@]}" >&2
+          if [[ ${#assets[@]} -ne 2 ]]; then
+            printf 'expected 2 release assets, found %s\n' "${#assets[@]}" >&2
             printf '%s\n' "${assets[@]}" >&2
             exit 1
           fi

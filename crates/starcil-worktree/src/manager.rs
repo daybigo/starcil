@@ -255,6 +255,16 @@ fn selector_label(selector: &WorktreeSelector) -> String {
 }
 
 fn paths_equal(left: &Path, right: &Path) -> bool {
+    // Git prints a path in its long form; the caller may hold the 8.3 short
+    // form (`C:\Users\RUNNER~1\...` on GitHub's Windows runners) or a
+    // symlinked one. When both exist on disk, the real paths settle it.
+    if let (Ok(left_real), Ok(right_real)) =
+        (std::fs::canonicalize(left), std::fs::canonicalize(right))
+    {
+        if left_real == right_real {
+            return true;
+        }
+    }
     let normalize = |path: &Path| {
         path.to_string_lossy()
             .replace('\\', "/")
@@ -274,6 +284,21 @@ fn paths_equal(left: &Path, right: &Path) -> bool {
 mod tests {
     use super::*;
     use std::{cell::RefCell, collections::VecDeque};
+
+    #[test]
+    fn paths_equal_uses_the_real_path_when_both_exist() {
+        let dir = std::env::temp_dir().join(format!("starcil-paths-equal-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // The canonical form differs textually (`\\?\` prefix on Windows,
+        // resolved symlinks elsewhere) yet names the same directory.
+        let canonical = std::fs::canonicalize(&dir).unwrap();
+        assert!(paths_equal(&dir, &canonical));
+        assert!(paths_equal(&canonical, &dir));
+        assert!(!paths_equal(&dir, &dir.join("other")));
+        std::fs::remove_dir_all(&dir).unwrap();
+        // Missing paths still compare by spelling.
+        assert!(paths_equal(Path::new("C:/a/b/"), Path::new("C:\\a\\b")));
+    }
 
     #[derive(Default)]
     struct RecordedRunner {

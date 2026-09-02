@@ -7,25 +7,10 @@ on:
 permissions:
   contents: read
 
+# Windows only for now: the server/client transport is Windows named pipes
+# and there is no Unix-socket counterpart yet, so the workspace does not
+# build on Linux or macOS. Add the Ubuntu job back with that transport.
 jobs:
-  ubuntu:
-    name: Ubuntu workspace
-    runs-on: ubuntu-24.04
-    env:
-      RUSTUP_TOOLCHAIN: stable-x86_64-unknown-linux-gnu
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Install stable Rust
-        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
-
-      - name: Build workspace
-        run: cargo build --workspace --locked
-
-      - name: Test workspace
-        run: cargo test --workspace --locked
-
   windows-gnu:
     name: Windows GNU workspace
     runs-on: windows-latest
