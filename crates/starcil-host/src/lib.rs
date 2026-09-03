@@ -859,7 +859,9 @@ mod tests {
             })
             .expect("spawn real host terminal");
 
-        wait_for_screen(&host, &terminal_id, Duration::from_secs(10), |screen| {
+        // A cold Windows PowerShell on a CI runner can take well over 10s to
+        // reach its prompt (module autoload, Defender): wait generously.
+        wait_for_screen(&host, &terminal_id, Duration::from_secs(45), |screen| {
             screen.contains("PS ") || screen.contains('>')
         });
         let snapshot = host.full_frame(&terminal_id).expect("prompt snapshot");
@@ -869,7 +871,7 @@ mod tests {
         host.write_text(&terminal_id, "echo STARCIL_HOST_OK")
             .expect("write text");
         host.write_enter(&terminal_id).expect("write enter");
-        wait_for_screen(&host, &terminal_id, Duration::from_secs(10), |screen| {
+        wait_for_screen(&host, &terminal_id, Duration::from_secs(30), |screen| {
             screen.contains("STARCIL_HOST_OK")
         });
 
