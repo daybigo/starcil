@@ -22,21 +22,27 @@ sus resultados.
 
 ## Instalación
 
-Windows 10/11, x86_64. Un solo comando descarga la última versión, verifica su checksum
-SHA-256, pone `starcil` en tu `PATH` y no toca tu configuración. Vuelve a correrlo para
-actualizar.
+Un solo comando descarga la última versión, verifica su checksum SHA-256, pone `starcil` en
+tu `PATH` y no toca tu configuración. Vuelve a correrlo para actualizar.
+
+**Windows** 10/11, x86_64 (PowerShell):
 
 ```powershell
 irm https://starcil.xtarify.app/install.ps1 | iex
 ```
 
-¿Prefieres un archivo? Baja `starcil-x86_64-pc-windows-gnu.zip` de la
-[última release](https://github.com/daybigo/starcil/releases/latest), descomprime
-`starcil.exe` en cualquier carpeta de tu `PATH`. El `SHA256SUMS` de al lado cubre todos los
-archivos.
+**Linux** x86_64 y arm64 (instala en `~/.local/bin`):
 
-Linux y macOS todavía no: el servidor y el cliente se hablan por named pipes de Windows, y el
-transporte por Unix socket es lo siguiente en la lista.
+```sh
+curl -fsSL https://starcil.xtarify.app/install.sh | sh
+```
+
+¿Prefieres un archivo? En la [última release](https://github.com/daybigo/starcil/releases/latest)
+está `starcil-x86_64-pc-windows-gnu.zip` para Windows y los binarios
+`starcil-x86_64-unknown-linux-gnu` / `starcil-aarch64-unknown-linux-gnu` para Linux; el
+`SHA256SUMS` de al lado cubre todos los archivos.
+
+macOS todavía no: falta leer el árbol de procesos y el cwd del shell sin `/proc`.
 
 ## Primeros pasos
 
@@ -89,12 +95,13 @@ socket directamente en NDJSON.
 
 ## Configuración
 
-`%APPDATA%\starcil\config.toml` (`starcil --default-config` imprime todas las claves con su
-valor por defecto; `starcil config check` valida el archivo). Algunas claves útiles:
+`%APPDATA%\starcil\config.toml` en Windows, `~/.config/starcil/config.toml` en Linux
+(`starcil --default-config` imprime todas las claves con su valor por defecto;
+`starcil config check` valida el archivo). Algunas claves útiles:
 
 | Clave | Qué hace |
 | --- | --- |
-| `terminal.default_shell` | `""` elige `pwsh.exe`, si no `powershell.exe`; pon `cmd.exe` explícito si lo quieres |
+| `terminal.default_shell` | `""` elige `pwsh.exe` o `powershell.exe` en Windows y `$SHELL` en Linux; pon otro shell explícito si lo quieres |
 | `ui.dock.agents` | qué CLIs ofrece el dock, en orden |
 | `theme.name`, `[theme.custom]` | 12 temas incluidos más overrides por token |
 | `keys.*` | todo el mapa de teclas; `starcil config reset-keys` respalda y limpia tus cambios |
@@ -105,15 +112,17 @@ instalarla; `starcil update` lo hace cuando tú quieras.
 
 ## Compilar desde el código
 
-Rust estable con el target `x86_64-pc-windows-gnu` (ver `rust-toolchain.toml`) y un toolchain
-GNU en el `PATH` (los runners de Windows de GitHub ya lo traen; en local, w64devkit funciona):
+Rust estable. En Windows hace falta el target `x86_64-pc-windows-gnu` (ver
+`rust-toolchain.toml`) y un toolchain GNU en el `PATH` (los runners de GitHub ya lo traen; en
+local, w64devkit funciona). En Linux basta `build-essential`:
 
-```powershell
+```sh
 cargo build --release -p starcil
 cargo test --workspace
+bash tests/e2e/linux-smoke.sh target/release/starcil   # Linux: server, shell, TUI anidado
 ```
 
-El binario queda en `target/release/starcil.exe`. `packaging/verify-install.ps1` instala un
+El binario queda en `target/release/starcil.exe` (Windows) o `target/release/starcil` (Linux). `packaging/verify-install.ps1` instala un
 build local a través del instalador real en un perfil aislado y limpia todo al terminar.
 
 ## Hecho por Xtarify

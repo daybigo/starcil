@@ -630,6 +630,7 @@ mod tests {
         terminal.kill().expect("kill PowerShell");
     }
 
+    #[cfg_attr(not(windows), allow(dead_code))]
     fn wait_until(timeout: Duration, mut predicate: impl FnMut() -> bool) -> Option<()> {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {

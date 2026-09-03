@@ -326,6 +326,7 @@ fn event_resolution_and_pane_preparation_build_authoritative_env() {
     assert!(executor.resolve_event_hooks(&registry, "worktree.created", &event, &active).unwrap().is_empty());
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 fn wait_until(timeout: Duration, condition: impl Fn() -> bool) {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {

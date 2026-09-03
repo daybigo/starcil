@@ -113,6 +113,7 @@ impl FromStr for TransportEndpoint {
     }
 }
 
+#[cfg(windows)]
 fn current_user_hash() -> String {
     let domain = std::env::var("USERDOMAIN").unwrap_or_default();
     let user = std::env::var("USERNAME")
@@ -121,6 +122,7 @@ fn current_user_hash() -> String {
     stable_hash(&format!("{domain}\\{user}"))
 }
 
+#[cfg(any(windows, test))]
 fn stable_hash(value: &str) -> String {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     for byte in value.as_bytes() {

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
 
@@ -420,7 +420,7 @@ fn read_stderr_tail(mut stderr: impl Read, limit: usize) -> String {
 
 #[cfg(windows)]
 fn resolve_program(program: &str) -> PathBuf {
-    let requested = Path::new(program);
+    let requested = std::path::Path::new(program);
     if requested.components().count() > 1 || requested.extension().is_some() {
         return requested.to_path_buf();
     }

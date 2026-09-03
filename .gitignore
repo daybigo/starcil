@@ -18,3 +18,5 @@ _secrets/
 # VPS deploy helper (Xtarify infrastructure details), local only.
 /deploy-site.sh
 /_site/
+/site-stats.sh
+/linux-build.sh

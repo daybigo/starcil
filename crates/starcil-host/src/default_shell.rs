@@ -64,10 +64,15 @@ const POWERSHELL_7: &str = "pwsh.exe";
 
 fn resolve_windows(env: &dyn Fn(&str) -> Option<String>, is_file: &dyn Fn(&Path) -> bool) -> String {
     let path = env("PATH").unwrap_or_default();
+    // Joined by hand with a backslash: this policy describes Windows even
+    // when it is unit-tested on Linux, where `Path::join` would use `/`.
     path.split(';')
         .map(str::trim)
         .filter(|directory| !directory.is_empty())
-        .map(|directory| PathBuf::from(directory).join(POWERSHELL_7))
+        .map(|directory| {
+            let directory = directory.trim_end_matches(['/', '\\']);
+            PathBuf::from(format!("{directory}\\{POWERSHELL_7}"))
+        })
         .find(|candidate| is_file(candidate))
         .map(|found| found.to_string_lossy().into_owned())
         .unwrap_or_else(|| WINDOWS_POWERSHELL.to_owned())
@@ -192,10 +197,17 @@ pub const POWERSHELL_CWD_HOOK: &str = "$global:__StarcilPrompt = $function:promp
 /// with `-NoExit`. Explicit `terminal.default_shell` values still count —
 /// the user picked the shell, not its plumbing.
 pub fn startup_args(program: &str) -> Vec<String> {
-    let stem = Path::new(program)
-        .file_stem()
-        .map(|stem| stem.to_string_lossy().to_ascii_lowercase())
-        .unwrap_or_default();
+    // Split on both separators by hand: a Windows path stays recognizable
+    // when this runs (or is tested) on Linux.
+    let file_name = program
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(program)
+        .to_ascii_lowercase();
+    let stem = file_name
+        .rsplit_once('.')
+        .map(|(stem, _)| stem.to_owned())
+        .unwrap_or(file_name);
     if stem == "powershell" || stem == "pwsh" {
         vec![
             "-NoExit".to_owned(),

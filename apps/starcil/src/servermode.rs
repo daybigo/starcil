@@ -164,13 +164,21 @@ fn ensure_server(session: &str) -> Result<(), String> {
     Err("server did not become reachable within 5s".into())
 }
 
-/// A named pipe (Windows) or unix socket accepts an open when a server owns it.
-/// "All pipe instances busy" (os error 231) also proves a live listener.
+/// A named pipe accepts an open when a server owns it. "All pipe instances
+/// busy" (os error 231) also proves a live listener.
+#[cfg(windows)]
 fn endpoint_reachable(endpoint: &std::path::Path) -> bool {
     match std::fs::OpenOptions::new().read(true).write(true).open(endpoint) {
         Ok(_) => true,
         Err(e) => e.raw_os_error() == Some(231),
     }
+}
+
+/// A Unix socket cannot be `open()`ed like a file (ENXIO): only a connect
+/// proves a live listener. A stale socket file refuses the connection.
+#[cfg(unix)]
+fn endpoint_reachable(endpoint: &std::path::Path) -> bool {
+    std::os::unix::net::UnixStream::connect(endpoint).is_ok()
 }
 
 fn init_logging(session: &str) {

@@ -20,3 +20,12 @@ pub use transport::{
 
 #[cfg(windows)]
 pub use transport::{connect_named_pipe, NamedPipeListener};
+#[cfg(unix)]
+pub use transport::{connect_unix_socket, UnixSocketListener};
+
+/// This platform's session transport: named pipes on Windows, Unix sockets
+/// elsewhere. Server and clients use these names and never spell the OS.
+#[cfg(windows)]
+pub use transport::{connect_named_pipe as connect_session, NamedPipeListener as SessionListener};
+#[cfg(unix)]
+pub use transport::{connect_unix_socket as connect_session, UnixSocketListener as SessionListener};

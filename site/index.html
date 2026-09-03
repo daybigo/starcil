@@ -185,7 +185,7 @@
       <div class="actions">
         <a class="btn primary" href="#install">
           <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1v8.6l2.8-2.8 1 1L8 11.6 4.2 7.8l1-1L8 9.6V1zM2 12h12v2H2z"/></svg>
-          Install on Windows
+          Install
         </a>
         <a class="btn" href="https://github.com/daybigo/starcil/releases/latest">Releases</a>
         <a class="btn" href="https://github.com/daybigo/starcil">
@@ -193,7 +193,7 @@
           Source
         </a>
       </div>
-      <p class="hint">Windows 10/11, x86_64. Open source under the Apache 2.0 license.</p>
+      <p class="hint">Windows 10/11 and Linux, x86_64. Open source under the Apache 2.0 license.</p>
     </div>
 
     <div class="screen" aria-label="Starcil screenshot rendered as text">
@@ -236,11 +236,14 @@
         </ul>
       </div>
       <div>
-        <h3>Linux &amp; macOS <span>not yet</span></h3>
-        <p>Starcil's server and client talk over Windows named pipes today. The Unix socket transport is next on the list; once it lands, the release workflow publishes Linux and macOS binaries and <code>install.sh</code> picks them up.</p>
+        <h3>Linux <span>x86_64 &amp; arm64</span></h3>
+        <div class="cmd"><code><span class="p">$</span> curl -fsSL https://starcil.xtarify.app/install.sh | sh</code><button data-copy="curl -fsSL https://starcil.xtarify.app/install.sh | sh">Copy</button></div>
+        <p>Installs into <code>~/.local/bin</code>. The server listens on a Unix socket under <code>$XDG_RUNTIME_DIR</code>; bash and zsh panes get the same composer, agent detection and live cwd as on Windows.</p>
         <ul class="assets">
-          <li><a href="https://github.com/daybigo/starcil/releases">All release assets</a></li>
+          <li><a href="https://github.com/daybigo/starcil/releases/latest/download/starcil-x86_64-unknown-linux-gnu">starcil-x86_64-unknown-linux-gnu</a> <code>latest</code></li>
+          <li><a href="https://github.com/daybigo/starcil/releases/latest/download/starcil-aarch64-unknown-linux-gnu">starcil-aarch64-unknown-linux-gnu</a> <code>latest</code></li>
         </ul>
+        <p>macOS is not there yet (no <code>/proc</code> to read the shell's process tree from).</p>
       </div>
     </div>
 
@@ -322,7 +325,7 @@ npx skills add daybigo/starcil --skill starcil -g</pre>
     <a href="https://github.com/daybigo/starcil">GitHub</a>
     <a href="https://github.com/daybigo/starcil/releases">Releases</a>
     <a href="https://github.com/daybigo/starcil/issues">Issues</a>
-    <span>Built in Rust. Windows today; Linux and macOS are on the roadmap.</span>
+    <span>Built in Rust. Windows and Linux today; macOS is on the roadmap.</span>
   </div>
 </footer>
 

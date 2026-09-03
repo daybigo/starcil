@@ -10,7 +10,7 @@ use crate::streams::{LeaseRegistry, RawStreamTransport, StreamRequest, TerminalS
 use serde_json::{json, Value};
 use starcil_agents::{AgentWait, LifecycleState, PromptWait, SystemClock, WaitConfig, WaitOutcome};
 use starcil_domain::{AgentStatus, PaneId};
-use starcil_platform::{NamedPipeListener, TransportEndpoint, DEFAULT_MAX_FRAME_SIZE};
+use starcil_platform::{SessionListener, TransportEndpoint, DEFAULT_MAX_FRAME_SIZE};
 #[allow(unused_imports)]
 use starcil_platform::Transport;
 use starcil_protocol::error::{ApiError, ErrorCode};
@@ -557,7 +557,7 @@ pub async fn run_server<H: TerminalStreamHost + Send + 'static>(
 ) -> Result<(), String> {
     let endpoint = TransportEndpoint::for_session(session).map_err(|e| e.to_string())?;
     let mut listener =
-        NamedPipeListener::bind(&endpoint, DEFAULT_MAX_FRAME_SIZE).map_err(|e| e.to_string())?;
+        SessionListener::bind(&endpoint, DEFAULT_MAX_FRAME_SIZE).map_err(|e| e.to_string())?;
     tracing::info!(session, address = %endpoint.as_address(), "starcil server listening");
 
     // Periodic agent tick.

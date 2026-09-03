@@ -54,11 +54,12 @@ impl PipeLink {
                 }
             };
             runtime.block_on(async move {
-                            // Retry briefly while the server arms the next pipe instance.
+                // Retry briefly while the server arms the next pipe instance
+                // (or binds its Unix socket).
                 let mut transport = {
                     let mut attempt = 0u32;
                     loop {
-                        match starcil_platform::connect_named_pipe(
+                        match starcil_platform::connect_session(
                             &endpoint,
                             starcil_platform::DEFAULT_MAX_FRAME_SIZE,
                         )

@@ -1,5 +1,6 @@
 use starcil_protocol::{Incoming, Request, MAX_FRAME_BYTES};
 use std::env;
+#[cfg(windows)]
 use std::fs::OpenOptions;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::PathBuf;

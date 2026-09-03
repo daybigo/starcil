@@ -1,6 +1,7 @@
 //! Production bridge between the server's frozen host seam and real PTYs.
 
 use std::collections::BTreeMap;
+#[cfg(windows)]
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
@@ -674,7 +675,9 @@ fn foreground_processes(_shell_pid: u32) -> Vec<ForegroundProcess> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
     use std::thread;
+    #[cfg(windows)]
     use std::time::{Duration, Instant};
 
     #[test]

@@ -116,43 +116,12 @@ where
     }
 }
 
-#[cfg(windows)]
 async fn connect_stream(
     endpoint: &starcil_platform::TransportEndpoint,
 ) -> io::Result<TransportHandle> {
-    starcil_platform::connect_named_pipe(endpoint, DEFAULT_MAX_FRAME_SIZE)
+    starcil_platform::connect_session(endpoint, DEFAULT_MAX_FRAME_SIZE)
         .await
         .map_err(transport_io_error)
-}
-
-#[cfg(unix)]
-async fn connect_stream(
-    endpoint: &starcil_platform::TransportEndpoint,
-) -> io::Result<TransportHandle> {
-    let path = match endpoint {
-        starcil_platform::TransportEndpoint::UnixSocket { path, .. } => path,
-        other => {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("endpoint is not a Unix socket: {other}"),
-            ));
-        }
-    };
-    let stream = tokio::net::UnixStream::connect(path).await?;
-    Ok(starcil_platform::spawn_stream_transport(
-        stream,
-        DEFAULT_MAX_FRAME_SIZE,
-    ))
-}
-
-#[cfg(not(any(windows, unix)))]
-async fn connect_stream(
-    _endpoint: &starcil_platform::TransportEndpoint,
-) -> io::Result<TransportHandle> {
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "terminal streams are unsupported on this platform",
-    ))
 }
 
 fn hello_frame(

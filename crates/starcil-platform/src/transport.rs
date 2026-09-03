@@ -15,7 +15,7 @@ use tokio::net::windows::named_pipe::{
     ClientOptions, NamedPipeClient, NamedPipeServer, ServerOptions,
 };
 
-#[cfg(windows)]
+#[cfg(any(windows, unix))]
 use crate::endpoint::TransportEndpoint;
 
 pub const DEFAULT_MAX_FRAME_SIZE: usize = 8 * 1024 * 1024;
@@ -37,6 +37,8 @@ enum OutgoingFrame {
 pub enum TransportError {
     #[error("transport I/O error: {0}")]
     Io(String),
+    #[error("invalid Unix socket endpoint: {0}")]
+    InvalidUnixSocketEndpoint(String),
     #[error("invalid JSON frame: {0}")]
     InvalidJson(String),
     #[error("NDJSON frame exceeds the {max_bytes} byte limit")]
@@ -668,6 +670,112 @@ async fn connect_pipe_with_retry(address: &str) -> Result<NamedPipeClient, Trans
     Err(TransportError::Closed)
 }
 
+/// Session endpoint on Unix: a socket file under the runtime dir
+/// (`$XDG_RUNTIME_DIR/starcil/<session>.sock`, or `~/.starcil/`), owner-only.
+/// Same shape as [`NamedPipeListener`] so the server is platform-agnostic.
+#[cfg(unix)]
+pub struct UnixSocketListener {
+    path: std::path::PathBuf,
+    listener: tokio::net::UnixListener,
+    max_frame_size: usize,
+}
+
+#[cfg(unix)]
+impl UnixSocketListener {
+    /// Bind the session socket. Must run inside a tokio runtime. A socket
+    /// file left behind by a dead server is removed; one that still answers
+    /// means another server owns the session.
+    pub fn bind(
+        endpoint: &TransportEndpoint,
+        max_frame_size: usize,
+    ) -> Result<Self, TransportError> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = match endpoint {
+            TransportEndpoint::UnixSocket { path, .. } => path.clone(),
+            other => {
+                return Err(TransportError::InvalidUnixSocketEndpoint(
+                    other.as_address(),
+                ));
+            }
+        };
+        let io = |error: std::io::Error| TransportError::Io(error.to_string());
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(io)?;
+            let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
+        }
+        if path.exists() {
+            match std::os::unix::net::UnixStream::connect(&path) {
+                Ok(_) => {
+                    return Err(TransportError::Io(format!(
+                        "another Starcil server already listens on {}",
+                        path.display()
+                    )));
+                }
+                Err(_) => std::fs::remove_file(&path).map_err(io)?,
+            }
+        }
+        let listener = tokio::net::UnixListener::bind(&path).map_err(io)?;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+        Ok(Self {
+            path,
+            listener,
+            max_frame_size: max_frame_size.max(1),
+        })
+    }
+
+    pub async fn accept(&mut self) -> Result<TransportHandle, TransportError> {
+        let (stream, _) = self
+            .listener
+            .accept()
+            .await
+            .map_err(|error| TransportError::Io(error.to_string()))?;
+        Ok(spawn_stream_transport(stream, self.max_frame_size))
+    }
+
+    pub fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+#[cfg(unix)]
+impl Drop for UnixSocketListener {
+    fn drop(&mut self) {
+        // A clean stop leaves no socket file behind; a crash is handled at
+        // the next bind.
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// Connect to a session's Unix socket, retrying briefly while a freshly
+/// spawned server is still binding (the pipe connector does the same).
+#[cfg(unix)]
+pub async fn connect_unix_socket(
+    endpoint: &TransportEndpoint,
+    max_frame_size: usize,
+) -> Result<TransportHandle, TransportError> {
+    let path = match endpoint {
+        TransportEndpoint::UnixSocket { path, .. } => path.clone(),
+        other => {
+            return Err(TransportError::InvalidUnixSocketEndpoint(
+                other.as_address(),
+            ));
+        }
+    };
+    const ATTEMPTS: usize = 100;
+    for attempt in 0..ATTEMPTS {
+        match tokio::net::UnixStream::connect(&path).await {
+            Ok(stream) => return Ok(spawn_stream_transport(stream, max_frame_size)),
+            Err(error) if attempt + 1 < ATTEMPTS => {
+                tracing::trace!(%error, attempt, "unix socket is not ready");
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            Err(error) => return Err(TransportError::Io(error.to_string())),
+        }
+    }
+    Err(TransportError::Closed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -888,6 +996,41 @@ mod tests {
         for task in server_tasks {
             task.await.unwrap();
         }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn unix_socket_listener_round_trips_and_cleans_up() {
+        let temp = std::env::temp_dir().join(format!("starcil-sock-{}", std::process::id()));
+        std::fs::create_dir_all(&temp).unwrap();
+        let endpoint = TransportEndpoint::UnixSocket {
+            path: temp.join("t.sock"),
+            session: "t".to_owned(),
+        };
+        // A stale file from a dead server must not block the bind.
+        std::fs::write(temp.join("t.sock"), b"").unwrap();
+        let mut listener = UnixSocketListener::bind(&endpoint, 1024).expect("bind socket");
+        let server = tokio::spawn(async move {
+            let mut conn = listener.accept().await.expect("accept");
+            let frame = conn.recv().await.expect("recv").expect("frame");
+            conn.send(frame).await.expect("echo");
+            listener
+        });
+        let mut client = connect_unix_socket(&endpoint, 1024).await.expect("connect");
+        client.send(json!({"hello": "unix"})).await.unwrap();
+        let echoed = client.recv().await.unwrap().unwrap();
+        assert_eq!(echoed, json!({"hello": "unix"}));
+        let listener = server.await.unwrap();
+        assert!(temp.join("t.sock").exists());
+        drop(listener);
+        assert!(!temp.join("t.sock").exists(), "a clean stop unlinks the socket");
+        // A second server on the same session is refused while the first answers.
+        let mut first = UnixSocketListener::bind(&endpoint, 1024).unwrap();
+        let busy = tokio::spawn(async move { first.accept().await.map(|_| ()) });
+        let second = UnixSocketListener::bind(&endpoint, 1024);
+        assert!(second.is_err(), "the live socket answers, so the bind must refuse");
+        busy.abort();
+        let _ = std::fs::remove_dir_all(&temp);
     }
 
     #[cfg(windows)]
