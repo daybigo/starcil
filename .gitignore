@@ -15,3 +15,6 @@ _secrets/
 /probe-mouse.txt
 /tests/e2e/campaign-output.txt
 /dist/
+# VPS deploy helper (Xtarify infrastructure details), local only.
+/deploy-site.sh
+/_site/
