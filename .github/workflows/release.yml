@@ -138,6 +138,13 @@ jobs:
           # the same name, instead of failing.
           if gh release view "$GITHUB_REF_NAME" --repo "$GH_REPO" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GH_REPO" --clobber
+            # A tag that was deleted and pushed again leaves its release as a
+            # draft: publish it, or `releases/latest` keeps pointing back.
+            if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+              gh release edit "$GITHUB_REF_NAME" --repo "$GH_REPO" --draft=false --prerelease
+            else
+              gh release edit "$GITHUB_REF_NAME" --repo "$GH_REPO" --draft=false --latest
+            fi
             exit 0
           fi
           release_flags=(--verify-tag --generate-notes)
