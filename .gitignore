@@ -8,6 +8,7 @@ _secrets/
 # ships is the agent skill: the binary embeds it (`starcil --skill`).
 *.md
 !/skills/starcil/SKILL.md
+!/README.md
 /docs/
 # Machine-local build wrapper (patched GNU toolchain paths) and probe output.
 /build.ps1
