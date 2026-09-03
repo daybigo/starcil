@@ -1,6 +1,7 @@
 //! Background-agent sound policy and injectable playback.
 
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::Command;
 
 use starcil_config::{Config, SoundPolicy};
@@ -31,35 +32,62 @@ pub enum SoundError {
     #[cfg(feature = "mp3")]
     #[error("MP3 playback failed for {path}: {reason}")]
     Mp3Playback { path: PathBuf, reason: String },
-    #[error("could not launch PowerShell sound playback: {0}")]
+    #[error("could not launch the sound player: {0}")]
     Launch(#[source] std::io::Error),
-    #[error("PowerShell sound playback exited with {0}")]
+    #[error("the sound player exited with {0}")]
     Failed(std::process::ExitStatus),
+    #[error("no audio player found (tried paplay, pw-play, ffplay, mpv and aplay)")]
+    NoPlayer,
+    #[error("no stock sound for the {0:?} cue on this system; set ui.sound.path")]
+    NoStockSound(SoundCue),
 }
 
 pub trait SoundPlayer {
     fn play(&mut self, request: &SoundRequest) -> Result<(), SoundError>;
 }
 
+/// Plays through what the OS already ships: `System.Media` via PowerShell
+/// on Windows, `afplay` on macOS, the first of `paplay` / `pw-play` /
+/// `ffplay` / `mpv` / `aplay` on Linux. Without a configured file each OS's
+/// stock alert sounds stand in for the two cues.
 #[derive(Debug, Default)]
-pub struct PowerShellSoundPlayer;
+pub struct SystemSoundPlayer;
 
-impl SoundPlayer for PowerShellSoundPlayer {
+impl SoundPlayer for SystemSoundPlayer {
     fn play(&mut self, request: &SoundRequest) -> Result<(), SoundError> {
-        if !cfg!(windows) {
-            return Err(SoundError::UnsupportedPlatform);
-        }
-        if let Some(path) = request
-            .path
-            .as_deref()
-            .filter(|path| {
-                path.extension()
-                    .and_then(|extension| extension.to_str())
-                    .is_some_and(|extension| extension.eq_ignore_ascii_case("mp3"))
-            })
-        {
+        platform::play(request)
+    }
+}
+
+/// Run `program args… path` to completion, silently.
+#[cfg(unix)]
+fn run_player(program: &str, args: &[&str], path: &Path) -> Result<(), SoundError> {
+    let status = Command::new(program)
+        .args(args)
+        .arg(path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map_err(SoundError::Launch)?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(SoundError::Failed(status))
+    }
+}
+
+#[cfg(windows)]
+mod platform {
+    use super::{SoundCue, SoundError, SoundRequest};
+    use std::process::Command;
+
+    /// `System.Media.SoundPlayer` decodes WAV only; MP3 needs the optional
+    /// rodio feature. The two stock cues are Windows' own system sounds.
+    pub(super) fn play(request: &SoundRequest) -> Result<(), SoundError> {
+        if let Some(path) = request.path.as_deref().filter(|path| super::is_mp3(path)) {
             #[cfg(feature = "mp3")]
-            return play_mp3(path);
+            return super::play_mp3(path);
 
             #[cfg(not(feature = "mp3"))]
             return Err(SoundError::Mp3RequiresRodio(path.to_owned()));
@@ -86,6 +114,89 @@ impl SoundPlayer for PowerShellSoundPlayer {
             Err(SoundError::Failed(status))
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+mod platform {
+    use super::{SoundCue, SoundError, SoundRequest};
+    use std::path::PathBuf;
+
+    /// `afplay` ships with macOS and decodes aiff, wav and mp3 alike. The
+    /// stock cues are two of the system alert sounds.
+    pub(super) fn play(request: &SoundRequest) -> Result<(), SoundError> {
+        let path = request.path.clone().unwrap_or_else(|| {
+            PathBuf::from(match request.cue {
+                SoundCue::Done => "/System/Library/Sounds/Glass.aiff",
+                SoundCue::Request => "/System/Library/Sounds/Ping.aiff",
+            })
+        });
+        super::run_player("afplay", &[], &path)
+    }
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+mod platform {
+    use super::{SoundCue, SoundError, SoundRequest};
+    use std::path::{Path, PathBuf};
+
+    /// In order of preference: PulseAudio/PipeWire clients decode ogg, wav
+    /// and (with GStreamer) mp3; ffplay and mpv decode everything; bare
+    /// aplay only does wav and is the last resort.
+    const PLAYERS: [(&str, &[&str]); 5] = [
+        ("paplay", &[]),
+        ("pw-play", &[]),
+        ("ffplay", &["-nodisp", "-autoexit", "-loglevel", "quiet"]),
+        ("mpv", &["--no-video", "--really-quiet"]),
+        ("aplay", &["-q"]),
+    ];
+
+    /// The freedesktop sound theme most desktops install.
+    fn stock(cue: SoundCue) -> Result<PathBuf, SoundError> {
+        let name = match cue {
+            SoundCue::Done => "complete.oga",
+            SoundCue::Request => "dialog-information.oga",
+        };
+        let path = Path::new("/usr/share/sounds/freedesktop/stereo").join(name);
+        if path.is_file() {
+            Ok(path)
+        } else {
+            Err(SoundError::NoStockSound(cue))
+        }
+    }
+
+    pub(super) fn play(request: &SoundRequest) -> Result<(), SoundError> {
+        let path = match &request.path {
+            Some(path) => path.clone(),
+            None => stock(request.cue)?,
+        };
+        for (program, args) in PLAYERS {
+            match super::run_player(program, args, &path) {
+                Err(SoundError::Launch(error))
+                    if error.kind() == std::io::ErrorKind::NotFound =>
+                {
+                    continue
+                }
+                outcome => return outcome,
+            }
+        }
+        Err(SoundError::NoPlayer)
+    }
+}
+
+#[cfg(not(any(windows, unix)))]
+mod platform {
+    use super::{SoundError, SoundRequest};
+
+    pub(super) fn play(_request: &SoundRequest) -> Result<(), SoundError> {
+        Err(SoundError::UnsupportedPlatform)
+    }
+}
+
+#[cfg(windows)]
+fn is_mp3(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("mp3"))
 }
 
 #[cfg(feature = "mp3")]

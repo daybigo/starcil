@@ -24,7 +24,12 @@ pub fn run(session: Option<String>) -> i32 {
     };
     let scrollback = report.config.advanced.scrollback_limit_bytes as usize;
 
-    let host = starcil_host::RealHost::new(default_shell, scrollback);
+    let login_shell = match report.config.terminal.shell_mode {
+        starcil_config::ShellMode::Auto => starcil_host::LoginShell::Auto,
+        starcil_config::ShellMode::Login => starcil_host::LoginShell::Always,
+        starcil_config::ShellMode::NonLogin => starcil_host::LoginShell::Never,
+    };
+    let host = starcil_host::RealHost::new(default_shell, scrollback).with_login_shell(login_shell);
     let mut core = match ServerCore::new(&session, &cwd, host) {
         Ok(c) => c,
         Err(e) => {

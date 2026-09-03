@@ -69,7 +69,17 @@ fi
 
 case ":$PATH:" in
     *":$INSTALL_DIR:"*) ;;
-    *) echo "PATH hint: add $INSTALL_DIR to your PATH" ;;
+    *)
+        # macOS and most Linux shells do not put ~/.local/bin on PATH by
+        # themselves; say exactly what to add.
+        case "${SHELL:-}" in
+            */zsh) RC='~/.zshrc' ;;
+            */fish) RC='~/.config/fish/config.fish' ;;
+            *) RC='~/.bashrc' ;;
+        esac
+        echo "$INSTALL_DIR is not on your PATH; add this line to $RC and open a new terminal:"
+        echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
+        ;;
 esac
 
 VERSION=${TAG#v}

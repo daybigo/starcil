@@ -3,8 +3,9 @@
 //!
 //! `pane.process_info` shells out to PowerShell (hundreds of ms) — fine for a
 //! one-off query, useless every 300ms. This module reads the process table
-//! natively (Windows: one Toolhelp32 snapshot, Linux: `/proc`), caches it for
-//! a tick, and walks parent links from the shell pid. Platforms without an
+//! natively (Windows: one Toolhelp32 snapshot, Linux: `/proc`, macOS: the
+//! `libproc` pid list plus one `proc_pidinfo` per pid), caches it for a tick,
+//! and walks parent links from the shell pid. Platforms without an
 //! implementation answer `None` ("unknown") so callers never mistake a blind
 //! host for an idle shell.
 
@@ -15,9 +16,9 @@ pub fn descendant_names(shell_pid: u32) -> Option<Vec<String>> {
 }
 
 /// Current directory of `pid` as the OS records it (Windows: the process
-/// parameters block; Linux: `/proc/<pid>/cwd`). `None` when the platform
-/// cannot tell or the process is gone. Trailing separators are dropped except
-/// on a bare root (`C:\`, `/`).
+/// parameters block; Linux: `/proc/<pid>/cwd`; macOS: the vnode path info of
+/// the process). `None` when the platform cannot tell or the process is
+/// gone. Trailing separators are dropped except on a bare root (`C:\`, `/`).
 pub fn process_cwd(pid: u32) -> Option<String> {
     cwd::read(pid).map(|path| normalize_cwd(&path))
 }
@@ -65,7 +66,7 @@ fn normalize_name(name: &str) -> String {
         .unwrap_or(lower)
 }
 
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 mod table {
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
@@ -88,7 +89,7 @@ mod table {
     }
 }
 
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 mod table {
     use super::ProcessRow;
 
@@ -238,7 +239,43 @@ mod cwd {
     }
 }
 
-#[cfg(not(any(all(windows, target_pointer_width = "64"), target_os = "linux")))]
+#[cfg(target_os = "macos")]
+mod cwd {
+    /// `proc_pidinfo(PROC_PIDVNODEPATHINFO)` reports the vnode of the
+    /// process's current directory with its path. Same-user processes only;
+    /// the pane shells are children of this server, so that always holds.
+    pub(super) fn read(pid: u32) -> Option<String> {
+        // SAFETY: the call fills a zeroed, correctly sized `proc_vnodepathinfo`
+        // and reports how many bytes it wrote; anything but the full struct is
+        // treated as failure before a byte is read.
+        unsafe {
+            let mut info: libc::proc_vnodepathinfo = std::mem::zeroed();
+            let size = std::mem::size_of::<libc::proc_vnodepathinfo>() as libc::c_int;
+            let written = libc::proc_pidinfo(
+                pid as libc::c_int,
+                libc::PROC_PIDVNODEPATHINFO,
+                0,
+                (&mut info as *mut libc::proc_vnodepathinfo).cast(),
+                size,
+            );
+            if written != size {
+                return None;
+            }
+            let path = &info.pvi_cdir.vip_path;
+            let bytes = std::slice::from_raw_parts(
+                path.as_ptr().cast::<u8>(),
+                std::mem::size_of_val(path),
+            );
+            super::platform::c_string(bytes).filter(|path| !path.is_empty())
+        }
+    }
+}
+
+#[cfg(not(any(
+    all(windows, target_pointer_width = "64"),
+    target_os = "linux",
+    target_os = "macos"
+)))]
 mod cwd {
     pub(super) fn read(_pid: u32) -> Option<String> {
         None
@@ -338,6 +375,89 @@ mod platform {
     }
 }
 
+#[cfg(target_os = "macos")]
+mod platform {
+    use super::ProcessRow;
+
+    /// `proc_listpids` selector for every pid on the system (libproc.h).
+    const PROC_ALL_PIDS: u32 = 1;
+
+    /// Every pid, then one `PROC_PIDTBSDINFO` query per pid for its parent
+    /// and its name. Pids this user may not inspect (other users' processes)
+    /// fail the query and are left out: they cannot be under our shells.
+    pub(super) fn read_table() -> Option<Vec<ProcessRow>> {
+        let pids = all_pids()?;
+        let mut table = Vec::with_capacity(pids.len());
+        for pid in pids {
+            let Some(info) = bsd_info(pid) else { continue };
+            // `pbi_name` holds up to 31 characters, `pbi_comm` only 15: a
+            // long program name is only whole in the first.
+            let name = c_string(bytes_of(&info.pbi_name))
+                .filter(|name| !name.is_empty())
+                .or_else(|| c_string(bytes_of(&info.pbi_comm)))
+                .unwrap_or_default();
+            table.push((pid, info.pbi_ppid, name));
+        }
+        Some(table)
+    }
+
+    fn all_pids() -> Option<Vec<u32>> {
+        // SAFETY: with a null buffer `proc_listpids` only reports the size it
+        // needs; the second call gets a buffer of at least that size and its
+        // length in bytes, and returns how many bytes it filled.
+        unsafe {
+            let needed = libc::proc_listpids(PROC_ALL_PIDS, 0, std::ptr::null_mut(), 0);
+            if needed <= 0 {
+                return None;
+            }
+            let pid_size = std::mem::size_of::<libc::pid_t>();
+            // Headroom for processes born between the two calls.
+            let mut pids = vec![0 as libc::pid_t; needed as usize / pid_size + 64];
+            let filled = libc::proc_listpids(
+                PROC_ALL_PIDS,
+                0,
+                pids.as_mut_ptr().cast(),
+                (pids.len() * pid_size) as libc::c_int,
+            );
+            if filled <= 0 {
+                return None;
+            }
+            pids.truncate(filled as usize / pid_size);
+            Some(pids.into_iter().filter(|pid| *pid > 0).map(|pid| pid as u32).collect())
+        }
+    }
+
+    fn bsd_info(pid: u32) -> Option<libc::proc_bsdinfo> {
+        // SAFETY: zeroed struct of the exact size the flavor writes; a short
+        // answer (process gone, not ours) is rejected before use.
+        unsafe {
+            let mut info: libc::proc_bsdinfo = std::mem::zeroed();
+            let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;
+            let written = libc::proc_pidinfo(
+                pid as libc::c_int,
+                libc::PROC_PIDTBSDINFO,
+                0,
+                (&mut info as *mut libc::proc_bsdinfo).cast(),
+                size,
+            );
+            (written == size).then_some(info)
+        }
+    }
+
+    fn bytes_of<const N: usize>(chars: &[libc::c_char; N]) -> &[u8] {
+        // SAFETY: `c_char` and `u8` have the same size and alignment; the
+        // slice covers exactly the array.
+        unsafe { std::slice::from_raw_parts(chars.as_ptr().cast::<u8>(), N) }
+    }
+
+    /// The text before the first NUL (the whole buffer when there is none:
+    /// the kernel does not terminate a name that fills its field).
+    pub(super) fn c_string(bytes: &[u8]) -> Option<String> {
+        let end = bytes.iter().position(|&byte| byte == 0).unwrap_or(bytes.len());
+        Some(String::from_utf8_lossy(&bytes[..end]).into_owned())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -375,7 +495,11 @@ mod tests {
         assert_eq!(normalize_cwd("D:\\dev"), "D:\\dev");
     }
 
-    #[cfg(any(all(windows, target_pointer_width = "64"), target_os = "linux"))]
+    #[cfg(any(
+        all(windows, target_pointer_width = "64"),
+        target_os = "linux",
+        target_os = "macos"
+    ))]
     #[test]
     fn the_live_cwd_of_this_process_is_its_current_dir() {
         let expected = std::env::current_dir().unwrap();
@@ -389,7 +513,7 @@ mod tests {
         assert!(process_cwd(u32::MAX - 1).is_none(), "a missing pid is None, not a panic");
     }
 
-    #[cfg(any(windows, target_os = "linux"))]
+    #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
     #[test]
     fn the_live_table_lists_this_process_tree() {
         // The test binary's own pid is in the table; its descendants (none)

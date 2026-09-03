@@ -8,6 +8,13 @@
 //! Unix: `$SHELL` (the user's login shell), then the first shell that exists in
 //! a per-OS preference list (zsh first on macOS, bash first on Linux), then `/bin/sh`.
 //!
+//! macOS panes get a LOGIN shell by default (`terminal.shell_mode = "auto"`):
+//! the PATH of a Mac is assembled by `/etc/zprofile` (`path_helper`) and by
+//! Homebrew's `shellenv` line in `~/.zprofile`, both login-only, so a plain
+//! `zsh` would not find `brew`, `claude` or `codex`. Every Mac terminal does
+//! the same. Elsewhere `auto` keeps the plain shell; `login`/`non_login`
+//! force either.
+//!
 //! The resolver takes the environment and the filesystem as closures so the
 //! policy is unit-tested without spawning anything.
 
@@ -192,11 +199,37 @@ mod tests {
 /// command-line argument.
 pub const POWERSHELL_CWD_HOOK: &str = "$global:__StarcilPrompt = $function:prompt; function global:prompt { [string]::Concat([char]27, ']9;9;', $ExecutionContext.SessionState.Path.CurrentLocation.ProviderPath, [char]7, (& $global:__StarcilPrompt)) }";
 
-/// Extra arguments for the default interactive shell. Only PowerShell
-/// (`powershell.exe`, `pwsh`) gets any: the cwd hook above, kept interactive
-/// with `-NoExit`. Explicit `terminal.default_shell` values still count —
-/// the user picked the shell, not its plumbing.
-pub fn startup_args(program: &str) -> Vec<String> {
+/// `terminal.shell_mode`: whether the default interactive shell starts as a
+/// login shell.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum LoginShell {
+    /// Login shell on macOS, plain shell elsewhere.
+    #[default]
+    Auto,
+    Always,
+    Never,
+}
+
+impl LoginShell {
+    fn applies(self, os: ShellOs) -> bool {
+        match self {
+            Self::Auto => os == ShellOs::MacOs,
+            Self::Always => true,
+            Self::Never => false,
+        }
+    }
+}
+
+/// Shells whose `-l` means "login shell". Anything else (nu, elvish, xonsh,
+/// pwsh) is started plain: their login flags differ or must come first.
+const LOGIN_FLAG_SHELLS: [&str; 8] = ["zsh", "bash", "sh", "dash", "ksh", "fish", "tcsh", "csh"];
+
+/// Extra arguments for the default interactive shell. PowerShell
+/// (`powershell.exe`, `pwsh`) gets the cwd hook above, kept interactive with
+/// `-NoExit`; a POSIX shell gets `-l` when the login policy says so. Explicit
+/// `terminal.default_shell` values still count — the user picked the shell,
+/// not its plumbing.
+pub fn startup_args_for(program: &str, os: ShellOs, login: LoginShell) -> Vec<String> {
     // Split on both separators by hand: a Windows path stays recognizable
     // when this runs (or is tested) on Linux.
     let file_name = program
@@ -214,6 +247,8 @@ pub fn startup_args(program: &str) -> Vec<String> {
             "-Command".to_owned(),
             POWERSHELL_CWD_HOOK.to_owned(),
         ]
+    } else if login.applies(os) && LOGIN_FLAG_SHELLS.contains(&stem.as_str()) {
+        vec!["-l".to_owned()]
     } else {
         Vec::new()
     }
@@ -226,7 +261,7 @@ mod startup_tests {
     #[test]
     fn only_powershell_gets_the_cwd_hook() {
         for program in ["powershell.exe", "pwsh", r"C:\Program Files\PowerShell\7\pwsh.exe", "PowerShell.EXE"] {
-            let args = startup_args(program);
+            let args = startup_args_for(program, ShellOs::Windows, LoginShell::Auto);
             assert_eq!(args.len(), 3, "{program}");
             assert_eq!(args[0], "-NoExit");
             assert_eq!(args[1], "-Command");
@@ -234,7 +269,40 @@ mod startup_tests {
             assert!(!args[2].contains('"'), "the hook must survive argv quoting");
         }
         for program in ["cmd.exe", "/bin/bash", "/usr/bin/zsh", "nu.exe", ""] {
-            assert!(startup_args(program).is_empty(), "{program}");
+            assert!(
+                startup_args_for(program, ShellOs::Linux, LoginShell::Auto).is_empty(),
+                "{program}"
+            );
         }
+    }
+
+    #[test]
+    fn macos_starts_posix_shells_as_login_shells_by_default() {
+        for program in ["/bin/zsh", "/bin/bash", "/opt/homebrew/bin/fish", "/bin/sh"] {
+            assert_eq!(
+                startup_args_for(program, ShellOs::MacOs, LoginShell::Auto),
+                vec!["-l"],
+                "{program}"
+            );
+            assert!(
+                startup_args_for(program, ShellOs::Linux, LoginShell::Auto).is_empty(),
+                "{program}: auto is a plain shell outside macOS"
+            );
+        }
+    }
+
+    #[test]
+    fn login_policy_is_explicit_on_every_os_and_skips_shells_without_dash_l() {
+        assert_eq!(startup_args_for("/bin/bash", ShellOs::Linux, LoginShell::Always), vec!["-l"]);
+        assert!(startup_args_for("/bin/zsh", ShellOs::MacOs, LoginShell::Never).is_empty());
+        assert!(startup_args_for("/opt/homebrew/bin/nu", ShellOs::MacOs, LoginShell::Auto).is_empty());
+        // PowerShell keeps its cwd hook whatever the policy: `-Login` would
+        // have to come first and the hook already owns the argv.
+        let args = startup_args_for("/usr/local/bin/pwsh", ShellOs::MacOs, LoginShell::Always);
+        assert_eq!(args[0], "-NoExit");
+        assert!(!args.contains(&"-l".to_owned()));
+        // Windows never gets `-l`, even when asked: PowerShell has no such flag.
+        assert!(!startup_args_for("powershell.exe", ShellOs::Windows, LoginShell::Always)
+            .contains(&"-l".to_owned()));
     }
 }

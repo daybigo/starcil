@@ -26,7 +26,20 @@ pub fn spawn_detached(command: &mut Command) -> Result<Child, DetachError> {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
-        command.process_group(0);
+        // A session of its own, with no controlling terminal: closing the
+        // terminal that launched the TUI then hangs up nobody, and the server
+        // outlives it like a daemon should. `setsid` refuses a process-group
+        // leader, so the child must not be moved into a group first.
+        // SAFETY: `setsid` is async-signal-safe and touches nothing shared with
+        // the parent; the closure runs in the forked child right before exec.
+        unsafe {
+            command.pre_exec(|| {
+                if libc::setsid() < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
     }
 
     Ok(command.spawn()?)

@@ -30,7 +30,8 @@ starcil-persist.workspace = true
 starcil-update.workspace = true
 semver.workspace = true
 
-# Native folder picker (the "visual cd"). Linux uses zenity/kdialog through
-# Command instead, so the heavyweight GTK backend never builds.
-[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+# Native folder picker (the "visual cd"). Linux asks zenity/kdialog and macOS
+# asks `osascript` (a Cocoa panel must run on the main thread, which the TUI
+# owns) through Command instead, so no GUI toolkit builds there.
+[target.'cfg(windows)'.dependencies]
 rfd = { workspace = true }

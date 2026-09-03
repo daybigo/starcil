@@ -3879,3 +3879,69 @@ fn dragging_a_tab_along_the_bar_reorders_it_locally_and_sends_tab_move() {
     assert_eq!(sent[4].0, "tab.focus");
     assert_eq!(order(&app), ["t1", "t2", "t3", "t9"]);
 }
+
+#[test]
+fn background_agent_transitions_reach_the_configured_notifier() {
+    let event = || {
+        ServerMsg::Incoming(Incoming::Event(EventFrame {
+            event: "pane.agent_status_changed".to_owned(),
+            data: serde_json::json!({
+                "pane_id": "p3",
+                "agent_status": "done",
+                "state_change_seq": 5
+            }),
+            revision: Some(8),
+        }))
+    };
+
+    let mut system = test_config();
+    system.ui.toast.delivery = ToastDelivery::System;
+    let mut app = App::new(
+        system,
+        HostAppearance::Dark,
+        FakeLink::new([ServerMsg::SessionSnapshot(snapshot_with_background_agent("codex")), event()]),
+    )
+    .unwrap();
+    app.poll();
+    let effects = app.take_effects();
+    assert!(
+        effects.iter().any(|effect| matches!(
+            effect,
+            AppEffect::DesktopNotification { title, body }
+                if title == "Starcil" && body == "background-agent finished in beta"
+        )),
+        "{effects:?}"
+    );
+    assert!(app.toasts().is_empty(), "system delivery draws no in-app toast");
+
+    // The workspace the user is looking at stays quiet.
+    let mut focused_snapshot = snapshot_with_background_agent("codex");
+    focused_snapshot.focused_workspace_id = "w2".to_owned();
+    let mut terminal = test_config();
+    terminal.ui.toast.delivery = ToastDelivery::Terminal;
+    let mut focused = App::new(
+        terminal,
+        HostAppearance::Dark,
+        FakeLink::new([ServerMsg::SessionSnapshot(focused_snapshot), event()]),
+    )
+    .unwrap();
+    focused.poll();
+    assert!(!focused
+        .take_effects()
+        .iter()
+        .any(|effect| matches!(effect, AppEffect::TerminalNotification { .. })));
+
+    // "off" (the default) announces nothing anywhere.
+    let mut off = App::new(
+        test_config(),
+        HostAppearance::Dark,
+        FakeLink::new([ServerMsg::SessionSnapshot(snapshot_with_background_agent("codex")), event()]),
+    )
+    .unwrap();
+    off.poll();
+    assert!(off.toasts().is_empty());
+    assert!(!off.take_effects().iter().any(|effect| matches!(
+        effect,
+        AppEffect::DesktopNotification { .. } | AppEffect::TerminalNotification { .. }
+    )));
+}

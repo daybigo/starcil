@@ -196,6 +196,47 @@ pub enum AppEffect {
     EnterCopyMode,
     OpenEditor { path: PathBuf },
     RunCommand { index: usize },
+    /// `ui.toast.delivery = "system"`: hand the message to the OS
+    /// notification service (a short-lived helper process, off the render
+    /// thread).
+    DesktopNotification { title: String, body: String },
+    /// `ui.toast.delivery = "terminal"`: ask the outer terminal to show it
+    /// (OSC 777 / OSC 9 on stdout), which also works over ssh.
+    TerminalNotification { title: String, body: String },
+}
+
+/// Title of every notification handed to the OS or the outer terminal.
+const NOTIFICATION_TITLE: &str = "Starcil";
+
+/// "codex finished in beta": an agent the user is not looking at (another
+/// workspace) finished or stopped to ask something. Toast-delivered by
+/// `ui.toast.delivery`, so it is silent by default.
+fn agent_announcement(
+    snapshot: &SessionSnapshot,
+    pane: &starcil_protocol::types::PaneInfo,
+    previous: AgentStatus,
+    next: AgentStatus,
+) -> Option<String> {
+    if previous == next || pane.workspace_id == snapshot.focused_workspace_id {
+        return None;
+    }
+    let what = match next {
+        AgentStatus::Done => "finished",
+        AgentStatus::Blocked => "needs input",
+        _ => return None,
+    };
+    let agent = pane
+        .agent_name
+        .clone()
+        .or_else(|| pane.agent.clone())
+        .unwrap_or_else(|| "agent".to_owned());
+    let workspace = snapshot
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.workspace_id == pane.workspace_id)
+        .map(|workspace| workspace.label.as_str())
+        .unwrap_or(pane.workspace_id.as_str());
+    Some(format!("{agent} {what} in {workspace}"))
 }
 
 #[derive(Debug, Error)]
@@ -1606,12 +1647,22 @@ impl<L: ServerLink> App<L> {
     }
 
     fn push_toast(&mut self, message: impl Into<String>) {
-        if self.config.ui.toast.delivery == ToastDelivery::Starcil {
-            self.toasts.push(ToastMessage {
-                message: message.into(),
+        let message = message.into();
+        match self.config.ui.toast.delivery {
+            ToastDelivery::Starcil => self.toasts.push(ToastMessage {
+                message,
                 position: toast_position(self.config.ui.toast.starcil.position),
                 created: std::time::Instant::now(),
-            });
+            }),
+            ToastDelivery::System => self.effects.push(AppEffect::DesktopNotification {
+                title: NOTIFICATION_TITLE.to_owned(),
+                body: message,
+            }),
+            ToastDelivery::Terminal => self.effects.push(AppEffect::TerminalNotification {
+                title: NOTIFICATION_TITLE.to_owned(),
+                body: message,
+            }),
+            ToastDelivery::Off => {}
         }
     }
 
@@ -2777,6 +2828,7 @@ impl<L: ServerLink> App<L> {
             return;
         }
         let previous = pane.agent_status;
+        let announcement = agent_announcement(snapshot, pane, previous, next);
         if let Some(request) = request_for_transition(
             &self.config,
             self.config_path.as_deref(),
@@ -2786,6 +2838,9 @@ impl<L: ServerLink> App<L> {
             next,
         ) {
             self.sound_requests.push(request);
+        }
+        if let Some(text) = announcement {
+            self.push_toast(text);
         }
         let Some(snapshot) = self.snapshot.as_mut() else {
             return;

@@ -5,12 +5,14 @@
 pub mod clipboard;
 pub mod detach;
 pub mod endpoint;
+pub mod notify;
 pub mod paths;
 pub mod transport;
 
 pub use clipboard::{ArboardClipboard, Clipboard, ClipboardError};
 pub use detach::{spawn_detached, DetachError};
 pub use endpoint::{EndpointError, TransportEndpoint};
+pub use notify::show_desktop_notification;
 pub use paths::{PathError, PlatformPaths};
 pub use transport::{
     spawn_stream_transport, spawn_stream_transport_with_limits, InMemoryTransport, Transport,

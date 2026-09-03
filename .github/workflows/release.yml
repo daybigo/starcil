@@ -13,12 +13,7 @@ jobs:
     name: Build ${{ matrix.target }}
     strategy:
       fail-fast: false
-      # Windows and Linux. macOS is not built yet: the process tree and the
-      # shell cwd have no macOS reader (no /proc), so the composer never
-      # learns when a program exits there. The entries, when that lands:
-      #   macos-15-intel    x86_64-apple-darwin        starcil-x86_64-apple-darwin
-      #   macos-15          aarch64-apple-darwin       starcil-aarch64-apple-darwin
-      # with `windows: false`, and the asset count below goes to 6.
+      # Windows, Linux (x86_64 + aarch64) and macOS (Intel + Apple silicon).
       matrix:
         include:
           - runner: windows-latest
@@ -40,6 +35,20 @@ jobs:
             toolchain: stable-aarch64-unknown-linux-gnu
             target: aarch64-unknown-linux-gnu
             asset: starcil-aarch64-unknown-linux-gnu
+            windows: false
+          # Both Mac binaries come off the Apple silicon runner: Apple's
+          # toolchain links either architecture, and rustup only needs the
+          # x86_64 std added. The linker ad-hoc signs both, which Apple
+          # silicon requires before it will run an arm64 binary at all.
+          - runner: macos-15
+            toolchain: stable-aarch64-apple-darwin
+            target: aarch64-apple-darwin
+            asset: starcil-aarch64-apple-darwin
+            windows: false
+          - runner: macos-15
+            toolchain: stable-aarch64-apple-darwin
+            target: x86_64-apple-darwin
+            asset: starcil-x86_64-apple-darwin
             windows: false
     runs-on: ${{ matrix.runner }}
     container: ${{ matrix.container || '' }}
@@ -64,6 +73,10 @@ jobs:
 
       - name: Install target-native stable Rust
         run: rustup toolchain install "${{ matrix.toolchain }}" --profile minimal
+
+      - name: Add the Intel macOS target
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: rustup target add --toolchain "${{ matrix.toolchain }}" x86_64-apple-darwin
 
       - name: Build release binary
         run: cargo +${{ matrix.toolchain }} build --locked --release --package starcil --target ${{ matrix.target }}
@@ -122,8 +135,8 @@ jobs:
           set -euo pipefail
           cd dist
           mapfile -t assets < <(find . -maxdepth 1 -type f -name 'starcil-*' -printf '%f\n' | sort)
-          if [[ ${#assets[@]} -ne 4 ]]; then
-            printf 'expected 4 release assets, found %s\n' "${#assets[@]}" >&2
+          if [[ ${#assets[@]} -ne 6 ]]; then
+            printf 'expected 6 release assets, found %s\n' "${#assets[@]}" >&2
             printf '%s\n' "${assets[@]}" >&2
             exit 1
           fi

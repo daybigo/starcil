@@ -1,29 +1,48 @@
 #!/usr/bin/env bash
-# Linux smoke test (no human): a real server on a Unix socket, a real bash
-# pane, the CLI round-trip, the live cwd and shell_idle read from /proc, and
-# the TUI running nested inside a pane of a second server, driven through the
-# outer pane's PTY (the same trick as the Windows harnesses).
+# Unix smoke test (no human), Linux and macOS: a real server on a Unix
+# socket, a real shell pane (bash on Linux, zsh on macOS: each OS's default),
+# the CLI round-trip, the live cwd and shell_idle read from the process table
+# (/proc on Linux, libproc on macOS), and the TUI running nested inside a
+# pane of a second server, driven through the outer pane's PTY (the same
+# trick as the Windows harnesses).
 #
-# Usage: bash tests/e2e/linux-smoke.sh [path/to/starcil]
+# Usage: bash tests/e2e/unix-smoke.sh [path/to/starcil]
 # Prints PASS/FAIL per check; exits 1 on any FAIL. Runs under a throwaway
 # HOME so nothing of the real user is touched.
 set -uo pipefail
 
-EXE=$(realpath "${1:-target/release/starcil}")
+EXE=$(cd "$(dirname "${1:-target/release/starcil}")" && pwd -P)/$(basename "${1:-target/release/starcil}")
 OUTER=lsouter
 INNER=lsinner
+OS=$(uname -s)
 
+# Always /tmp: a Unix socket path is capped at 104 bytes on macOS and the
+# per-user $TMPDIR there is already 50 of them.
 WORK=$(mktemp -d /tmp/starcil-smoke.XXXXXX)
 export HOME="$WORK/home"
 export XDG_CONFIG_HOME="$HOME/.config"
 export XDG_DATA_HOME="$HOME/.local/share"
-export XDG_RUNTIME_DIR="$WORK/run"
-mkdir -p "$XDG_CONFIG_HOME/starcil" "$XDG_RUNTIME_DIR" "$HOME/proj"
-cat > "$XDG_CONFIG_HOME/starcil/config.toml" <<'EOF'
+mkdir -p "$XDG_CONFIG_HOME/starcil" "$HOME/proj"
+if [ "$OS" = Darwin ]; then
+    # A Mac has no XDG_RUNTIME_DIR: the socket goes under ~/.starcil, and the
+    # default shell is zsh. An empty .zshrc keeps zsh-newuser-install quiet.
+    unset XDG_RUNTIME_DIR
+    SOCK_DIR="$HOME/.starcil"
+    SHELL_BIN=/bin/zsh
+    : > "$HOME/.zshrc"
+    perm_of() { stat -f %Lp "$1"; }
+else
+    export XDG_RUNTIME_DIR="$WORK/run"
+    mkdir -p "$XDG_RUNTIME_DIR"
+    SOCK_DIR="$XDG_RUNTIME_DIR/starcil"
+    SHELL_BIN=/bin/bash
+    perm_of() { stat -c %a "$1"; }
+fi
+cat > "$XDG_CONFIG_HOME/starcil/config.toml" <<EOF
 onboarding = false
 
 [terminal]
-default_shell = "/bin/bash"
+default_shell = "$SHELL_BIN"
 
 [experimental]
 allow_nested = true
@@ -71,19 +90,27 @@ cd "$HOME"
 "$EXE" --session "$OUTER" server >"$WORK/server.log" 2>&1 &
 SERVER_PID=$!
 wait_server "$OUTER"; check "server answers over the unix socket" $([ $? = 0 ] && echo 1 || echo 0)
-sock="$XDG_RUNTIME_DIR/starcil/$OUTER.sock"
-[ -S "$sock" ]; check "socket file lives in XDG_RUNTIME_DIR ($sock)" $([ $? = 0 ] && echo 1 || echo 0)
-perm=$(stat -c %a "$sock" 2>/dev/null || echo "?")
+sock="$SOCK_DIR/$OUTER.sock"
+[ -S "$sock" ]; check "socket file lives in the runtime dir ($sock)" $([ $? = 0 ] && echo 1 || echo 0)
+perm=$(perm_of "$sock" 2>/dev/null || echo "?")
 [ "$perm" = 600 ]; check "socket is owner-only (0600, got $perm)" $([ $? = 0 ] && echo 1 || echo 0)
 
-# --- 2. a real bash pane, CLI round-trip -------------------------------------
+# --- 2. a real shell pane, CLI round-trip ------------------------------------
 pane=$(cli "$OUTER" pane list | field pane_id)
 [ -n "$pane" ]; check "pane list names a pane ($pane)" $([ $? = 0 ] && echo 1 || echo 0)
-cli "$OUTER" pane send-text "$pane" 'echo LINUX-OK-$((6*7))' >/dev/null
+cli "$OUTER" pane send-text "$pane" 'echo UNIX-OK-$((6*7))' >/dev/null
 cli "$OUTER" pane send-keys "$pane" enter >/dev/null
-wait_for "$OUTER" "$pane" "LINUX-OK-42"; check "bash runs a command typed through the CLI" $([ $? = 0 ] && echo 1 || echo 0)
+wait_for "$OUTER" "$pane" "UNIX-OK-42"; check "$(basename "$SHELL_BIN") runs a command typed through the CLI" $([ $? = 0 ] && echo 1 || echo 0)
+if [ "$OS" = Darwin ]; then
+    # shell_mode = auto starts a LOGIN shell on macOS (`zsh -l`; $0 does not
+    # change, the `login` option does). The echoed command line must not
+    # contain the needle itself, hence the substitution.
+    cli "$OUTER" pane send-text "$pane" 'echo LOGIN-SHELL=$([[ -o login ]] && echo yes || echo no)' >/dev/null
+    cli "$OUTER" pane send-keys "$pane" enter >/dev/null
+    wait_for "$OUTER" "$pane" "LOGIN-SHELL=yes"; check "the macOS pane runs a login shell" $([ $? = 0 ] && echo 1 || echo 0)
+fi
 
-# --- 3. live cwd + shell_idle from /proc -------------------------------------
+# --- 3. live cwd + shell_idle from the process table -------------------------
 cli "$OUTER" pane send-text "$pane" 'cd proj' >/dev/null
 cli "$OUTER" pane send-keys "$pane" enter >/dev/null
 ok=0
@@ -91,7 +118,7 @@ for _ in $(seq 1 30); do
     case "$(cli "$OUTER" pane list | field cwd)" in */proj) ok=1; break ;; esac
     sleep 0.25
 done
-check "pane cwd follows cd (read from /proc/<pid>/cwd)" $ok
+check "pane cwd follows cd (read from the shell process)" $ok
 cli "$OUTER" pane send-text "$pane" 'sleep 3' >/dev/null
 cli "$OUTER" pane send-keys "$pane" enter >/dev/null
 sleep 1.2
@@ -141,7 +168,7 @@ cli "$OUTER" pane send-keys "$pane" esc >/dev/null
 # --- 5. clean stop ------------------------------------------------------------
 cli "$INNER" server stop >/dev/null 2>&1
 sleep 1
-[ ! -e "$XDG_RUNTIME_DIR/starcil/$INNER.sock" ]; check "server stop removes the socket file" $([ $? = 0 ] && echo 1 || echo 0)
+[ ! -e "$SOCK_DIR/$INNER.sock" ]; check "server stop removes the socket file" $([ $? = 0 ] && echo 1 || echo 0)
 
 echo
 echo "=== RESULTS: $pass passed, $fail failed ==="

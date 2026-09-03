@@ -475,8 +475,34 @@ fn run_with_link(link: impl ServerLink + LinkHealth, remote: bool) -> i32 {
                         }
                     }
                 }
+                starcil_tui::AppEffect::DesktopNotification { title, body } => {
+                    // One helper process per notification, off the render
+                    // thread (PowerShell alone takes a few hundred ms).
+                    std::thread::spawn(move || {
+                        if let Err(error) =
+                            starcil_platform::show_desktop_notification(&title, &body)
+                        {
+                            tracing::debug!(error = %error, "desktop notification");
+                        }
+                    });
+                }
+                starcil_tui::AppEffect::TerminalNotification { title, body } => {
+                    write_terminal_notification(&title, &body);
+                }
                 other => tracing::debug!(?other, "app effect"),
             }
+        }
+        // Sounds go through an external player: never on the render thread.
+        let sounds = app.take_sound_requests();
+        if !sounds.is_empty() {
+            std::thread::spawn(move || {
+                let mut controller = starcil_tui::sound::SoundController::new(
+                    starcil_tui::sound::SystemSoundPlayer,
+                );
+                for error in controller.play_all(sounds) {
+                    tracing::debug!(error = %error, "sound playback");
+                }
+            });
         }
         if app.detached() {
             break 0;
@@ -563,7 +589,25 @@ fn pick_folder(start_in: Option<String>) -> Option<String> {
     native_pick_folder(start_in)
 }
 
-#[cfg(any(windows, target_os = "macos"))]
+/// Outer-terminal notification: OSC 777 (urxvt, WezTerm, foot) and OSC 9
+/// (iTerm2, ConEmu, WezTerm) on stdout; a terminal that knows neither drops
+/// them. Works over ssh, which the desktop path cannot.
+fn write_terminal_notification(title: &str, body: &str) {
+    use std::io::Write as _;
+    // Control bytes would end the sequence early; `;` would split OSC 777's
+    // title from its body.
+    let clean = |text: &str| -> String {
+        text.chars()
+            .map(|ch| if ch.is_control() || ch == ';' { ' ' } else { ch })
+            .collect()
+    };
+    let (title, body) = (clean(title), clean(body));
+    let mut out = std::io::stdout();
+    let _ = write!(out, "\x1b]777;notify;{title};{body}\x07\x1b]9;{title}: {body}\x07");
+    let _ = out.flush();
+}
+
+#[cfg(windows)]
 fn native_pick_folder(start_in: Option<String>) -> Option<String> {
     let mut dialog = rfd::FileDialog::new().set_title("Choose a folder");
     if let Some(start) = start_in.filter(|start| std::path::Path::new(start).is_dir()) {
@@ -574,7 +618,35 @@ fn native_pick_folder(start_in: Option<String>) -> Option<String> {
         .map(|path| path.to_string_lossy().into_owned())
 }
 
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(target_os = "macos")]
+fn native_pick_folder(start_in: Option<String>) -> Option<String> {
+    // `choose folder` runs inside osascript's own process: a Cocoa open
+    // panel must live on its process's main thread, and the TUI's main
+    // thread is busy rendering. Cancel exits non-zero ("User canceled.").
+    let mut script = String::from("POSIX path of (choose folder with prompt \"Choose a folder\"");
+    if let Some(start) = start_in.filter(|start| std::path::Path::new(start).is_dir()) {
+        let quoted = start.replace('\\', "\\\\").replace('"', "\\\"");
+        script.push_str(&format!(" default location (POSIX file \"{quoted}\")"));
+    }
+    script.push(')');
+    let output = std::process::Command::new("/usr/bin/osascript")
+        .args(["-e", &script])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    // AppleScript reports folders with a trailing slash; `/` itself stays.
+    let path = if path.len() > 1 {
+        path.trim_end_matches('/').to_owned()
+    } else {
+        path
+    };
+    (!path.is_empty()).then_some(path)
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
 fn native_pick_folder(start_in: Option<String>) -> Option<String> {
     // zenity first, then kdialog; both print the chosen path on stdout.
     let start = start_in.unwrap_or_default();

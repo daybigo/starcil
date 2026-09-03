@@ -12,4 +12,10 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 arboard.workspace = true
-notify-rust.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+# Wayland sessions without XWayland have no X11 clipboard to fall back on.
+[target.'cfg(target_os = "linux")'.dependencies]
+arboard = { workspace = true, features = ["wayland-data-control"] }

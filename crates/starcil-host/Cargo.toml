@@ -13,3 +13,7 @@ starcil-domain.workspace = true
 starcil-protocol.workspace = true
 starcil-server.workspace = true
 starcil-terminal.workspace = true
+
+# Process table and per-process cwd through libproc.
+[target.'cfg(target_os = "macos")'.dependencies]
+libc.workspace = true

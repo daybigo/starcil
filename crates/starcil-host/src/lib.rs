@@ -35,10 +35,13 @@ struct TerminalEntry {
 mod default_shell;
 mod process_tree;
 
-pub use default_shell::{resolve_default_shell, resolve_with as resolve_default_shell_with, ShellOs};
+pub use default_shell::{
+    resolve_default_shell, resolve_with as resolve_default_shell_with, LoginShell, ShellOs,
+};
 
 pub struct RealHost {
     default_shell: Option<String>,
+    login_shell: LoginShell,
     scrollback_limit_bytes: usize,
     next_terminal: u64,
     terminals: BTreeMap<String, TerminalEntry>,
@@ -48,10 +51,18 @@ impl RealHost {
     pub fn new(default_shell: Option<String>, scrollback_limit_bytes: usize) -> Self {
         Self {
             default_shell: default_shell.filter(|shell| !shell.trim().is_empty()),
+            login_shell: LoginShell::Auto,
             scrollback_limit_bytes: scrollback_limit_bytes.max(1),
             next_terminal: 0,
             terminals: BTreeMap::new(),
         }
+    }
+
+    /// `terminal.shell_mode`: login shells on macOS by default, everywhere
+    /// with `Always`, nowhere with `Never`.
+    pub fn with_login_shell(mut self, login_shell: LoginShell) -> Self {
+        self.login_shell = login_shell;
+        self
     }
 
     pub fn write_bytes(&mut self, terminal_id: &str, bytes: &[u8]) -> Result<(), HostError> {
@@ -140,7 +151,8 @@ impl TerminalHost for RealHost {
             }
             None => {
                 let shell = self.default_shell();
-                let args = default_shell::startup_args(&shell);
+                let args =
+                    default_shell::startup_args_for(&shell, ShellOs::current(), self.login_shell);
                 (shell, args)
             }
         };

@@ -31,7 +31,33 @@ jobs:
       - name: Linux smoke test
         run: |
           cargo build --locked --release --package starcil
-          bash tests/e2e/linux-smoke.sh target/release/starcil
+          bash tests/e2e/unix-smoke.sh target/release/starcil
+
+  macos:
+    name: macOS workspace
+    # Apple silicon runner; the Intel binary is cross-built at release time.
+    runs-on: macos-15
+    env:
+      RUSTUP_TOOLCHAIN: stable-aarch64-apple-darwin
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+
+      - name: Build workspace
+        run: cargo build --workspace --locked
+
+      - name: Test workspace
+        run: cargo test --workspace --locked
+
+      # Same script as Linux: Unix socket under ~/.starcil, a zsh LOGIN pane,
+      # libproc-backed cwd and shell_idle, the TUI nested in a pane.
+      - name: macOS smoke test
+        run: |
+          cargo build --locked --release --package starcil
+          bash tests/e2e/unix-smoke.sh target/release/starcil
 
   windows-gnu:
     name: Windows GNU workspace
