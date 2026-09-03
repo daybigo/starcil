@@ -295,12 +295,12 @@ pub enum UpdateChannel {
 }
 
 impl Default for UpdateChannel {
+    /// Stable everywhere: releases are plain `vX.Y.Z` tags and nobody is
+    /// opted into previews by default (`update.channel = "preview"` opts in).
+    /// Windows used to default to preview, which made the in-app updater
+    /// report "up to date" forever on a stable-only release train.
     fn default() -> Self {
-        if cfg!(windows) {
-            Self::Preview
-        } else {
-            Self::Stable
-        }
+        Self::Stable
     }
 }
 
