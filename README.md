@@ -31,18 +31,20 @@ tu `PATH` y no toca tu configuración. Vuelve a correrlo para actualizar.
 irm https://starcil.xtarify.app/install.ps1 | iex
 ```
 
-**Linux** x86_64 y arm64 (instala en `~/.local/bin`):
+**Linux** x86_64 y arm64, **macOS** Intel y Apple Silicon (instala en `~/.local/bin`):
 
 ```sh
 curl -fsSL https://starcil.xtarify.app/install.sh | sh
 ```
 
 ¿Prefieres un archivo? En la [última release](https://github.com/daybigo/starcil/releases/latest)
-está `starcil-x86_64-pc-windows-gnu.zip` para Windows y los binarios
-`starcil-x86_64-unknown-linux-gnu` / `starcil-aarch64-unknown-linux-gnu` para Linux; el
-`SHA256SUMS` de al lado cubre todos los archivos.
+está `starcil-x86_64-pc-windows-gnu.zip` para Windows, los binarios
+`starcil-x86_64-unknown-linux-gnu` / `starcil-aarch64-unknown-linux-gnu` para Linux y
+`starcil-x86_64-apple-darwin` / `starcil-aarch64-apple-darwin` para macOS; el `SHA256SUMS`
+de al lado cubre todos los archivos.
 
-macOS todavía no: falta leer el árbol de procesos y el cwd del shell sin `/proc`.
+En macOS los paneles abren un shell de login (como Terminal e iTerm), así que el `PATH` de
+Homebrew y de tus agentes está disponible; `terminal.shell_mode = "non_login"` lo cambia.
 
 ## Primeros pasos
 
@@ -95,13 +97,15 @@ socket directamente en NDJSON.
 
 ## Configuración
 
-`%APPDATA%\starcil\config.toml` en Windows, `~/.config/starcil/config.toml` en Linux
+`%APPDATA%\starcil\config.toml` en Windows, `~/.config/starcil/config.toml` en Linux y macOS
 (`starcil --default-config` imprime todas las claves con su valor por defecto;
 `starcil config check` valida el archivo). Algunas claves útiles:
 
 | Clave | Qué hace |
 | --- | --- |
-| `terminal.default_shell` | `""` elige `pwsh.exe` o `powershell.exe` en Windows y `$SHELL` en Linux; pon otro shell explícito si lo quieres |
+| `terminal.default_shell` | `""` elige `pwsh.exe` o `powershell.exe` en Windows y `$SHELL` en Linux y macOS; pon otro shell explícito si lo quieres |
+| `ui.toast.delivery` | `off`, `starcil` (toast en la app), `terminal` (OSC a tu terminal, sirve por ssh) o `system` (notificación del sistema: toast de Windows, Centro de notificaciones en macOS, `notify-send` en Linux) cuando un agente en otro workspace termina o pide algo |
+| `ui.sound.*` | sonidos para esos mismos eventos: `System.Media` en Windows, `afplay` en macOS, `paplay`/`pw-play`/`ffplay`/`mpv`/`aplay` en Linux |
 | `ui.dock.agents` | qué CLIs ofrece el dock, en orden |
 | `theme.name`, `[theme.custom]` | 12 temas incluidos más overrides por token |
 | `keys.*` | todo el mapa de teclas; `starcil config reset-keys` respalda y limpia tus cambios |
@@ -114,16 +118,18 @@ instalarla; `starcil update` lo hace cuando tú quieras.
 
 Rust estable. En Windows hace falta el target `x86_64-pc-windows-gnu` (ver
 `rust-toolchain.toml`) y un toolchain GNU en el `PATH` (los runners de GitHub ya lo traen; en
-local, w64devkit funciona). En Linux basta `build-essential`:
+local, w64devkit funciona). En Linux basta `build-essential`; en macOS, las Command Line
+Tools de Xcode:
 
 ```sh
 cargo build --release -p starcil
 cargo test --workspace
-bash tests/e2e/linux-smoke.sh target/release/starcil   # Linux: server, shell, TUI anidado
+bash tests/e2e/unix-smoke.sh target/release/starcil   # Linux y macOS: server, shell, TUI anidado
 ```
 
-El binario queda en `target/release/starcil.exe` (Windows) o `target/release/starcil` (Linux). `packaging/verify-install.ps1` instala un
-build local a través del instalador real en un perfil aislado y limpia todo al terminar.
+El binario queda en `target/release/starcil.exe` (Windows) o `target/release/starcil` (Linux
+y macOS). `packaging/verify-install.ps1` instala un build local a través del instalador real
+en un perfil aislado y limpia todo al terminar.
 
 ## Hecho por Xtarify
 

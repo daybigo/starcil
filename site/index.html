@@ -236,14 +236,15 @@
         </ul>
       </div>
       <div>
-        <h3>Linux <span>x86_64 &amp; arm64</span></h3>
+        <h3>Linux &amp; macOS <span>x86_64 &amp; arm64</span></h3>
         <div class="cmd"><code><span class="p">$</span> curl -fsSL https://starcil.xtarify.app/install.sh | sh</code><button data-copy="curl -fsSL https://starcil.xtarify.app/install.sh | sh">Copy</button></div>
-        <p>Installs into <code>~/.local/bin</code>. The server listens on a Unix socket under <code>$XDG_RUNTIME_DIR</code>; bash and zsh panes get the same composer, agent detection and live cwd as on Windows.</p>
+        <p>Installs into <code>~/.local/bin</code>. The server listens on a Unix socket; bash and zsh panes get the same composer, agent detection and live cwd as on Windows. macOS panes open login shells, like Terminal and iTerm do, so Homebrew and your agents are on <code>PATH</code>.</p>
         <ul class="assets">
           <li><a href="https://github.com/daybigo/starcil/releases/latest/download/starcil-x86_64-unknown-linux-gnu">starcil-x86_64-unknown-linux-gnu</a> <code>latest</code></li>
           <li><a href="https://github.com/daybigo/starcil/releases/latest/download/starcil-aarch64-unknown-linux-gnu">starcil-aarch64-unknown-linux-gnu</a> <code>latest</code></li>
+          <li><a href="https://github.com/daybigo/starcil/releases/latest/download/starcil-x86_64-apple-darwin">starcil-x86_64-apple-darwin</a> <code>latest</code></li>
+          <li><a href="https://github.com/daybigo/starcil/releases/latest/download/starcil-aarch64-apple-darwin">starcil-aarch64-apple-darwin</a> <code>latest</code></li>
         </ul>
-        <p>macOS is not there yet (no <code>/proc</code> to read the shell's process tree from).</p>
       </div>
     </div>
 
@@ -325,7 +326,7 @@ npx skills add daybigo/starcil --skill starcil -g</pre>
     <a href="https://github.com/daybigo/starcil">GitHub</a>
     <a href="https://github.com/daybigo/starcil/releases">Releases</a>
     <a href="https://github.com/daybigo/starcil/issues">Issues</a>
-    <span>Built in Rust. Windows and Linux today; macOS is on the roadmap.</span>
+    <span>Built in Rust. Windows, Linux and macOS.</span>
   </div>
 </footer>
 
