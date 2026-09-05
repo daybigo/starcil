@@ -17,9 +17,9 @@ use starcil_server::hosttraits::{
 };
 use starcil_server::streams::{TerminalOutput, TerminalStreamHost};
 use starcil_terminal::{
-    PaneCommand, PaneTerminal, ReadFormat as TerminalReadFormat,
+    encode_key, PaneCommand, PaneTerminal, ReadFormat as TerminalReadFormat,
     ReadSource as TerminalReadSource, TerminalCellStyle, TerminalColor,
-    TerminalCursor, TerminalScreenFrame, TerminalSize,
+    TerminalCursor, TerminalKeyboardMode, TerminalScreenFrame, TerminalSize,
 };
 
 pub const DEFAULT_SCROLLBACK_LIMIT_BYTES: usize = 10 * 1024 * 1024;
@@ -210,13 +210,13 @@ impl TerminalHost for RealHost {
     }
 
     fn write_keys(&mut self, terminal_id: &str, keys: &[String]) -> Result<(), HostError> {
-        let encoded: Result<Vec<Vec<u8>>, HostError> =
-            keys.iter().map(|key| encode_key(key)).collect();
-        let encoded = encoded?;
-        let mut payload = Vec::with_capacity(encoded.iter().map(Vec::len).sum());
-        for key in encoded {
-            payload.extend_from_slice(&key);
-        }
+        // The encoding depends on what the pane's program negotiated (kitty
+        // flags, ConPTY win32-input-mode), so it is resolved per write.
+        let mode = self
+            .terminal(terminal_id)?
+            .keyboard_mode()
+            .map_err(host_io_error)?;
+        let payload = encode_keys(keys, mode)?;
         self.write_bytes(terminal_id, &payload)
     }
 
@@ -573,68 +573,15 @@ fn host_io_error(error: starcil_terminal::TerminalError) -> HostError {
     HostError::Io(error.to_string())
 }
 
-fn encode_key(key: &str) -> Result<Vec<u8>, HostError> {
-    let normalized = key.to_ascii_lowercase();
-    let bytes = match normalized.as_str() {
-        "esc" | "escape" => b"\x1b".to_vec(),
-        "enter" | "return" => b"\r".to_vec(),
-        "tab" => b"\t".to_vec(),
-        "shift+tab" => b"\x1b[Z".to_vec(),
-        "backspace" => vec![0x7f],
-        "space" => b" ".to_vec(),
-        "up" => b"\x1b[A".to_vec(),
-        "down" => b"\x1b[B".to_vec(),
-        "right" => b"\x1b[C".to_vec(),
-        "left" => b"\x1b[D".to_vec(),
-        "home" => b"\x1b[H".to_vec(),
-        "end" => b"\x1b[F".to_vec(),
-        "insert" => b"\x1b[2~".to_vec(),
-        "delete" => b"\x1b[3~".to_vec(),
-        "pageup" | "page_up" => b"\x1b[5~".to_vec(),
-        "pagedown" | "page_down" => b"\x1b[6~".to_vec(),
-        "f1" => b"\x1bOP".to_vec(),
-        "f2" => b"\x1bOQ".to_vec(),
-        "f3" => b"\x1bOR".to_vec(),
-        "f4" => b"\x1bOS".to_vec(),
-        "f5" => b"\x1b[15~".to_vec(),
-        "f6" => b"\x1b[17~".to_vec(),
-        "f7" => b"\x1b[18~".to_vec(),
-        "f8" => b"\x1b[19~".to_vec(),
-        "f9" => b"\x1b[20~".to_vec(),
-        "f10" => b"\x1b[21~".to_vec(),
-        "f11" => b"\x1b[23~".to_vec(),
-        "f12" => b"\x1b[24~".to_vec(),
-        "ctrl+space" => vec![0],
-        _ if normalized.starts_with("ctrl+") => {
-            let suffix = &normalized[5..];
-            let mut characters = suffix.chars();
-            let character = characters
-                .next()
-                .filter(|_| characters.next().is_none())
-                .ok_or_else(|| HostError::InvalidKey(key.to_owned()))?;
-            match character {
-                'a'..='z' => vec![(character as u8) - b'a' + 1],
-                '[' => vec![0x1b],
-                '\\' => vec![0x1c],
-                ']' => vec![0x1d],
-                '^' => vec![0x1e],
-                '_' => vec![0x1f],
-                _ => return Err(HostError::InvalidKey(key.to_owned())),
-            }
-        }
-        _ if normalized.starts_with("alt+") => {
-            let suffix = key.get(4..).unwrap_or_default();
-            if suffix.chars().count() != 1 {
-                return Err(HostError::InvalidKey(key.to_owned()));
-            }
-            let mut encoded = vec![0x1b];
-            encoded.extend_from_slice(suffix.as_bytes());
-            encoded
-        }
-        _ if key.chars().count() == 1 => key.as_bytes().to_vec(),
-        _ => return Err(HostError::InvalidKey(key.to_owned())),
-    };
-    Ok(bytes)
+/// One payload for a `send-keys` batch, or the first chord that has no
+/// encoding — nothing is written in that case.
+fn encode_keys(keys: &[String], mode: TerminalKeyboardMode) -> Result<Vec<u8>, HostError> {
+    let mut payload = Vec::new();
+    for key in keys {
+        let bytes = encode_key(key, mode).map_err(|error| HostError::InvalidKey(error.0))?;
+        payload.extend_from_slice(&bytes);
+    }
+    Ok(payload)
 }
 
 #[cfg(windows)]
@@ -693,14 +640,26 @@ mod tests {
     use std::time::{Duration, Instant};
 
     #[test]
-    fn key_encoding_covers_required_logical_keys() {
-        assert_eq!(encode_key("esc").unwrap(), b"\x1b");
-        assert_eq!(encode_key("ctrl+c").unwrap(), &[3]);
-        assert_eq!(encode_key("shift+tab").unwrap(), b"\x1b[Z");
-        assert_eq!(encode_key("f5").unwrap(), b"\x1b[15~");
+    fn key_batches_encode_for_the_pane_mode_and_reject_unknown_chords_whole() {
+        let legacy = TerminalKeyboardMode::default();
+        let keys = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            encode_keys(&keys(&["esc", "ctrl+c", "shift+tab", "f5"]), legacy).unwrap(),
+            b"\x1b\x03\x1b[Z\x1b[15~"
+        );
+        // shift+enter used to be `InvalidKey` here and vanished silently.
+        assert_eq!(encode_keys(&keys(&["shift+enter"]), legacy).unwrap(), b"\x1b\r");
+        let kitty = TerminalKeyboardMode {
+            kitty_flags: starcil_terminal::KITTY_DISAMBIGUATE,
+            ..legacy
+        };
+        assert_eq!(
+            encode_keys(&keys(&["shift+enter"]), kitty).unwrap(),
+            b"\x1b[13;2u"
+        );
         assert!(matches!(
-            encode_key("ctrl+not-a-key"),
-            Err(HostError::InvalidKey(_))
+            encode_keys(&keys(&["enter", "ctrl+not-a-key"]), legacy),
+            Err(HostError::InvalidKey(key)) if key == "ctrl+not-a-key"
         ));
     }
 

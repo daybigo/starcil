@@ -3525,6 +3525,73 @@ fn composer_yields_the_keyboard_while_a_program_runs_and_takes_it_back_at_the_pr
     assert!(app.composer_focused());
 }
 
+#[test]
+fn modified_enter_breaks_the_draft_line_and_reaches_a_running_program_as_its_chord() {
+    let mut app = app_with_frames(test_config());
+    clear_agents(&mut app);
+    app.link_mut().take_sent();
+    assert!(app.composer_focused());
+
+    // At the prompt: shift+enter, alt+enter and ctrl+enter add a line break
+    // to the draft; plain Enter then runs it line by line (the paste path).
+    type_text(&mut app, "echo a");
+    press(&mut app, KeyCode::Enter, KeyModifiers::SHIFT);
+    type_text(&mut app, "echo b");
+    press(&mut app, KeyCode::Enter, KeyModifiers::ALT);
+    type_text(&mut app, "echo c");
+    press(&mut app, KeyCode::Enter, KeyModifiers::CONTROL);
+    type_text(&mut app, "echo d");
+    assert_eq!(app.composer_text(), "echo a\necho b\necho c\necho d");
+    assert!(
+        sent_inputs(app.link().sent()).is_empty(),
+        "nothing reaches the PTY before Enter"
+    );
+    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    let expected: Vec<InputFrame> = ["echo a", "echo b", "echo c", "echo d"]
+        .into_iter()
+        .flat_map(|line| {
+            [
+                InputFrame::Text {
+                    pane_id: "p1".to_owned(),
+                    text: line.to_owned(),
+                },
+                InputFrame::Keys {
+                    pane_id: "p1".to_owned(),
+                    keys: vec!["enter".to_owned()],
+                },
+            ]
+        })
+        .collect();
+    assert_eq!(sent_inputs(app.link().sent()), expected);
+
+    // A program owns the keyboard (Claude Code, codex, vim): every modified
+    // Enter travels as its chord and the server encodes it for whatever
+    // keyboard protocol that program negotiated. These used to be dropped.
+    let mut snapshot = app.snapshot().unwrap().clone();
+    snapshot.panes[0].shell_idle = Some(false);
+    app.set_snapshot(snapshot);
+    app.link_mut().take_sent();
+    press(&mut app, KeyCode::Enter, KeyModifiers::SHIFT);
+    press(&mut app, KeyCode::Enter, KeyModifiers::ALT);
+    press(&mut app, KeyCode::Enter, KeyModifiers::CONTROL);
+    press(&mut app, KeyCode::Char('j'), KeyModifiers::CONTROL);
+    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    let chord = |name: &str| InputFrame::Keys {
+        pane_id: "p1".to_owned(),
+        keys: vec![name.to_owned()],
+    };
+    assert_eq!(
+        sent_inputs(app.link().sent()),
+        vec![
+            chord("shift+enter"),
+            chord("alt+enter"),
+            chord(if cfg!(windows) { "ctrl+j" } else { "ctrl+enter" }),
+            chord("ctrl+j"),
+            chord("enter"),
+        ]
+    );
+}
+
 fn row_text(buffer: &Buffer, y: u16, range: std::ops::Range<u16>) -> String {
     range
         .map(|x| buffer.cell((x, y)).unwrap().symbol().to_owned())

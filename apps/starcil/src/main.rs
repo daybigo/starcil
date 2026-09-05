@@ -3,14 +3,34 @@
 //! automation CLI (`starcil <group> <cmd>`), bridge/helper modes.
 
 mod clientloop;
+mod keytrace;
 mod servermode;
 #[cfg(windows)]
 mod wininput;
+#[cfg(any(windows, test))]
+mod vtinput;
 
 use starcil_cli::{parse, Behavior};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("__probe-keys") {
+        if args.iter().any(|a| a == "--help" || a == "-h") {
+            println!("starcil __probe-keys [output-file] [--seconds N]\nRecord raw Windows KEY_EVENTs, decoded events and pane chords for 20 seconds using the TUI input mode; restores the console on exit. Example: starcil __probe-keys keys.txt");
+            return;
+        }
+        #[cfg(windows)]
+        if let Err(error) = wininput::probe_keys(&args[1..]) {
+            eprintln!("starcil key probe: {error}");
+            std::process::exit(1);
+        }
+        #[cfg(not(windows))]
+        {
+            eprintln!("starcil __probe-keys requires a Windows console");
+            std::process::exit(1);
+        }
+        return;
+    }
     // Hidden diagnostic: probe crossterm input under the current terminal,
     // mouse included — shows exactly which events the host terminal forwards
     // (e.g. whether right clicks ever reach the application).

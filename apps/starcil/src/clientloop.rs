@@ -98,6 +98,7 @@ impl PipeLink {
 
 impl ServerLink for PipeLink {
     fn send(&mut self, msg: ClientMsg) {
+        trace_keys(&msg);
         let value = match msg {
             ClientMsg::Request(r) => serde_json::to_value(&r),
             ClientMsg::Input(f) => serde_json::to_value(&f),
@@ -246,6 +247,7 @@ impl RemoteLink {
 
 impl ServerLink for RemoteLink {
     fn send(&mut self, msg: ClientMsg) {
+        trace_keys(&msg);
         let value = match msg {
             ClientMsg::Request(r) => serde_json::to_value(&r),
             ClientMsg::Input(f) => serde_json::to_value(&f),
@@ -327,12 +329,35 @@ fn run_with_link(link: impl ServerLink + LinkHealth, remote: bool) -> i32 {
     if mouse_captured {
         let _ = execute!(out, crossterm::event::EnableMouseCapture);
     }
+    // Ask the outer terminal to disambiguate keys (kitty keyboard protocol):
+    // without it shift+enter is a plain `\r` and can never reach the pane as
+    // a newline. Must run BEFORE the input thread starts, it reads the reply
+    // itself. Windows needs its own probe and a mixed record/VT input reader.
+    #[cfg(not(windows))]
+    let keyboard_enhanced = terminal::supports_keyboard_enhancement().unwrap_or(false)
+        && execute!(
+            out,
+            crossterm::event::PushKeyboardEnhancementFlags(
+                crossterm::event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+            )
+        )
+        .is_ok();
+    #[cfg(windows)]
+    let keyboard_enhanced = false;
+    #[cfg(windows)]
+    let mut windows_reader = crate::wininput::ConsoleReader::new();
+    #[cfg(windows)]
+    let windows_keyboard = windows_reader.as_mut().ok().and_then(|reader| {
+        reader.negotiate().map_err(|error| tracing::warn!(%error, "kitty input negotiation failed")).ok()
+    });
     let mut clipboard = ClientClipboard::new();
     let backend = ratatui::backend::CrosstermBackend::new(std::io::stdout());
     let mut term = match ratatui::Terminal::new(backend) {
         Ok(t) => t,
         Err(e) => {
-            let _ = terminal::disable_raw_mode();
+            #[cfg(windows)]
+            drop(windows_keyboard);
+            restore_terminal(mouse_captured, keyboard_enhanced);
             eprintln!("starcil: {e}");
             return 1;
         }
@@ -349,7 +374,7 @@ fn run_with_link(link: impl ServerLink + LinkHealth, remote: bool) -> i32 {
     // a stuck-button-tolerant parser (hosts like Warp never forward the right
     // release); keyboard records still go through crossterm. See wininput.rs.
     #[cfg(windows)]
-    crate::wininput::spawn_input_thread(ev_tx);
+    crate::wininput::spawn_input_thread(ev_tx, windows_reader);
     #[cfg(not(windows))]
     std::thread::spawn(move || loop {
         // Blocking read: zero polling latency between keystroke and delivery.
@@ -524,12 +549,31 @@ fn run_with_link(link: impl ServerLink + LinkHealth, remote: bool) -> i32 {
         }
     };
 
+    #[cfg(windows)]
+    drop(windows_keyboard);
+    restore_terminal(mouse_captured, keyboard_enhanced);
+    code
+}
+
+fn trace_keys(msg: &ClientMsg) {
+    if let ClientMsg::Input(InputFrame::Keys { pane_id, keys }) = msg {
+        crate::keytrace::record(&format!("FORWARD pane={pane_id} keys={keys:?}"));
+    }
+}
+
+/// Undo the terminal setup in reverse order. The keyboard flags MUST be
+/// popped: a terminal left in kitty mode hands the shell `CSI 27u` for Esc.
+fn restore_terminal(mouse_captured: bool, keyboard_enhanced: bool) {
+    let mut out = std::io::stdout();
+    if keyboard_enhanced {
+        #[cfg(not(windows))]
+        let _ = execute!(out, crossterm::event::PopKeyboardEnhancementFlags);
+    }
     let _ = terminal::disable_raw_mode();
     if mouse_captured {
-        let _ = execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
+        let _ = execute!(out, crossterm::event::DisableMouseCapture);
     }
-    let _ = execute!(std::io::stdout(), terminal::LeaveAlternateScreen);
-    code
+    let _ = execute!(out, terminal::LeaveAlternateScreen);
 }
 
 /// Check the release feed once in the background and stage a newer build if

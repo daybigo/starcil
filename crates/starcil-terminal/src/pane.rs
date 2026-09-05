@@ -9,6 +9,7 @@ use thiserror::Error;
 
 use crate::command::PaneCommand;
 use crate::interceptor::QueryKind;
+use crate::keyboard::TerminalKeyboardMode;
 use crate::screen::{
     ReadFormat, ReadSource, ScreenState, TerminalRead, TerminalScreenFrame,
     TerminalScrollMetrics,
@@ -86,6 +87,7 @@ pub struct QueryResponseCounts {
     pub primary_device_attributes: u64,
     pub secondary_device_attributes: u64,
     pub device_status: u64,
+    pub keyboard_flags: u64,
 }
 
 #[derive(Default)]
@@ -95,6 +97,7 @@ struct QueryCounters {
     primary_device_attributes: AtomicU64,
     secondary_device_attributes: AtomicU64,
     device_status: AtomicU64,
+    keyboard_flags: AtomicU64,
 }
 
 impl QueryCounters {
@@ -105,6 +108,7 @@ impl QueryCounters {
             QueryKind::PrimaryDeviceAttributes => &self.primary_device_attributes,
             QueryKind::SecondaryDeviceAttributes => &self.secondary_device_attributes,
             QueryKind::DeviceStatus => &self.device_status,
+            QueryKind::KeyboardFlags => &self.keyboard_flags,
         };
         counter.fetch_add(1, Ordering::Relaxed);
     }
@@ -120,6 +124,7 @@ impl QueryCounters {
                 .secondary_device_attributes
                 .load(Ordering::Relaxed),
             device_status: self.device_status.load(Ordering::Relaxed),
+            keyboard_flags: self.keyboard_flags.load(Ordering::Relaxed),
         }
     }
 }
@@ -336,6 +341,12 @@ impl PaneTerminal {
 
     pub fn is_bracketed_paste_enabled(&self) -> Result<bool, TerminalError> {
         Ok(lock(&self.shared.screen)?.bracketed_paste())
+    }
+
+    /// Keyboard protocol the pane's program negotiated (kitty flags, ConPTY
+    /// win32-input-mode, DECCKM): what `encode_key` must be given.
+    pub fn keyboard_mode(&self) -> Result<TerminalKeyboardMode, TerminalError> {
+        Ok(lock(&self.shared.screen)?.keyboard_mode())
     }
 
     pub fn terminal_title(&self) -> Result<Option<String>, TerminalError> {

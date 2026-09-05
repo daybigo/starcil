@@ -1980,6 +1980,12 @@ impl<L: ServerLink> App<L> {
                     editor.word_right();
                     true
                 }
+                // ctrl+enter: a line break in the draft (Enter runs it line
+                // by line), the same chord Claude Code and codex use.
+                Key::Named(NamedKey::Enter) => {
+                    editor.insert_char('\n');
+                    true
+                }
                 _ => false,
             };
             if handled {
@@ -1988,7 +1994,7 @@ impl<L: ServerLink> App<L> {
                 chord.key,
                 Key::Character('a' | 'e' | 'u' | 'k' | 'w')
                     | Key::Named(NamedKey::Home | NamedKey::End | NamedKey::Left | NamedKey::Right)
-                    | Key::Named(NamedKey::Backspace | NamedKey::Delete)
+                    | Key::Named(NamedKey::Backspace | NamedKey::Delete | NamedKey::Enter)
             ) {
                 // ctrl+l, ctrl+z, ctrl+c/ctrl+d on an empty line…: the
                 // program's. Editing chords with nothing to edit stay here.
@@ -2009,19 +2015,31 @@ impl<L: ServerLink> App<L> {
                 }
                 Key::Character('d') => editor.delete_word_forward(),
                 Key::Named(NamedKey::Backspace) => editor.delete_word_back(),
+                // alt+enter (meta+enter, readline's newline).
+                Key::Named(NamedKey::Enter) => {
+                    editor.insert_char('\n');
+                    true
+                }
                 _ => false,
             };
             if handled {
                 self.after_composer_edit();
             } else if !matches!(
                 chord.key,
-                Key::Character('b' | 'f' | 'd') | Key::Named(NamedKey::Backspace)
+                Key::Character('b' | 'f' | 'd') | Key::Named(NamedKey::Backspace | NamedKey::Enter)
             ) {
                 self.forward_to_pane(event, chord);
             }
             return Ok(());
         }
         match chord.key {
+            // shift+enter breaks the line inside the draft; Enter runs the
+            // draft line by line (the paste path). Only terminals that report
+            // a modified Enter get here — the rest see a plain Enter.
+            Key::Named(NamedKey::Enter) if mods.shift => {
+                self.composers.entry(pane_id).or_default().insert_char('\n');
+                self.after_composer_edit();
+            }
             Key::Named(NamedKey::Enter) => self.submit_composer(&pane_id),
             Key::Named(NamedKey::Backspace) => {
                 self.composers.entry(pane_id).or_default().backspace();
@@ -2886,7 +2904,7 @@ impl<L: ServerLink> App<L> {
         }
         self.link.send(ClientMsg::Input(InputFrame::Keys {
             pane_id,
-            keys: vec![chord.to_string()],
+            keys: vec![crate::input::pane_key_chord(chord).to_string()],
         }));
     }
 

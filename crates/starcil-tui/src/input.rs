@@ -1,6 +1,26 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use starcil_config::{Key, KeyChord, MetaModifier, Modifiers, NamedKey};
 
+/// Normalize only at the pane boundary, after modal and shell-composer routing.
+/// ConPTY synthesizes Ctrl+Enter for a terminal's raw LF (Ctrl+J). A physical
+/// Ctrl+Enter is indistinguishable; on Windows both become the agent newline key.
+pub fn pane_key_chord(chord: KeyChord) -> KeyChord {
+    normalize_pane_chord(chord, cfg!(windows))
+}
+
+fn normalize_pane_chord(mut chord: KeyChord, windows: bool) -> KeyChord {
+    if windows
+        && chord.key == Key::Named(NamedKey::Enter)
+        && chord.mods.ctrl
+        && !chord.mods.alt
+        && !chord.mods.shift
+        && chord.mods.meta.is_none()
+    {
+        chord.key = Key::Character('j');
+    }
+    chord
+}
+
 pub fn key_event_to_chord(event: &KeyEvent) -> Option<KeyChord> {
     if event.kind == KeyEventKind::Release {
         return None;
@@ -71,6 +91,25 @@ fn normalize_character(character: char, mods: &mut Modifiers) -> Key {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pane_newline_mapping_is_windows_only_and_preserves_other_modifiers() {
+        for (modifiers, windows_chord, unix_chord) in [
+            (KeyModifiers::NONE, "enter", "enter"),
+            (KeyModifiers::CONTROL, "ctrl+j", "ctrl+enter"),
+            (KeyModifiers::SHIFT, "shift+enter", "shift+enter"),
+            (KeyModifiers::ALT, "alt+enter", "alt+enter"),
+            (KeyModifiers::CONTROL | KeyModifiers::SHIFT, "ctrl+shift+enter", "ctrl+shift+enter"),
+            (KeyModifiers::CONTROL | KeyModifiers::ALT, "ctrl+alt+enter", "ctrl+alt+enter"),
+        ] {
+            let event = KeyEvent::new(KeyCode::Enter, modifiers);
+            let chord = key_event_to_chord(&event).unwrap();
+            assert_eq!(normalize_pane_chord(chord.clone(), true).to_string(), windows_chord);
+            assert_eq!(normalize_pane_chord(chord, false).to_string(), unix_chord);
+        }
+        let ctrl_j = key_event_to_chord(&KeyEvent::new(KeyCode::Char('j'), KeyModifiers::CONTROL)).unwrap();
+        assert_eq!(normalize_pane_chord(ctrl_j, true).to_string(), "ctrl+j");
+    }
 
     #[test]
     fn normalizes_prefix_letters_and_printable_punctuation() {

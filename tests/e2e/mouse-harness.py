@@ -102,6 +102,10 @@ control = subprocess.Popen(
 
 
 def raw(data: bytes):
+    # Explicit Escape record works with both native and negotiated kitty
+    # input, without ConPTY holding a bare ESC until the next mouse/key input.
+    if data == b"\x1b":
+        data = b"\x1b[27;1;27;1;0;1_\x1b[27;1;27;0;0;1_"
     frame = json.dumps({"input": {"data_base64": base64.b64encode(data).decode()}}) + "\n"
     control.stdin.write(frame.encode())
     control.stdin.flush()

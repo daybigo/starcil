@@ -88,6 +88,11 @@ control = subprocess.Popen(
 
 
 def raw(data: bytes):
+    # A negotiated kitty client expects CSI 27u; a bare ESC can remain in
+    # ConPTY's escape timeout and combine with the next typed letter. Send
+    # the real Windows Escape record so this tests the UI, not that timeout.
+    if data == b"\x1b":
+        data = b"\x1b[27;1;27;1;0;1_\x1b[27;1;27;0;0;1_"
     control.stdin.write((json.dumps({"input": {"data_base64": base64.b64encode(data).decode()}}) + "\n").encode())
     control.stdin.flush()
 

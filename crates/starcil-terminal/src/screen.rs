@@ -4,6 +4,7 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 
 use crate::interceptor::{EscapeInterceptor, InterceptEvent, QueryKind};
+use crate::keyboard::{kitty_flags_response, KeyboardState, TerminalKeyboardMode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -138,6 +139,9 @@ pub(crate) struct ScreenState {
     /// the client, so it gets its own frame.
     cursor: TerminalCursor,
     cursor_dirty: bool,
+    /// Keyboard protocol the program negotiated (kitty flag stacks, ConPTY
+    /// win32-input-mode); read by the key encoder on every `write_keys`.
+    keyboard: KeyboardState,
 }
 
 impl ScreenState {
@@ -167,6 +171,7 @@ impl ScreenState {
             mouse_mode_dirty: false,
             cursor,
             cursor_dirty: false,
+            keyboard: KeyboardState::default(),
         }
     }
 
@@ -250,6 +255,23 @@ impl ScreenState {
             }
             // Not a screen change: the agent tick polls it on its own.
             InterceptEvent::Cwd(cwd) => self.shell_cwd = Some(cwd),
+            // Keyboard protocol bookkeeping: none of it touches the screen.
+            InterceptEvent::Win32Input(enabled) => self.keyboard.win32_input = enabled,
+            InterceptEvent::KittyPush(flags) => {
+                let alternate = self.parser.screen().alternate_screen();
+                self.keyboard.push(alternate, flags);
+            }
+            InterceptEvent::KittyPop(count) => {
+                let alternate = self.parser.screen().alternate_screen();
+                self.keyboard.pop(alternate, count);
+            }
+            InterceptEvent::KittySet { flags, mode } => {
+                let alternate = self.parser.screen().alternate_screen();
+                self.keyboard.set(alternate, flags, mode);
+            }
+            InterceptEvent::AlternateScreen(false) => self.keyboard.leave_alternate_screen(),
+            InterceptEvent::AlternateScreen(true) => {}
+            InterceptEvent::Reset => self.keyboard.reset(),
             InterceptEvent::Query(kind) => {
                 let response = match kind {
                     QueryKind::CursorPosition => {
@@ -259,6 +281,13 @@ impl ScreenState {
                     QueryKind::PrimaryDeviceAttributes => b"\x1b[?1;2c".to_vec(),
                     QueryKind::SecondaryDeviceAttributes => b"\x1b[>0;100;0c".to_vec(),
                     QueryKind::DeviceStatus => b"\x1b[0n".to_vec(),
+                    QueryKind::KeyboardFlags => {
+                        let alternate = self.parser.screen().alternate_screen();
+                        kitty_flags_response(
+                            self.keyboard.flags(alternate),
+                            self.keyboard.win32_input,
+                        )
+                    }
                 };
                 respond(kind, response);
             }
@@ -411,6 +440,17 @@ impl ScreenState {
 
     pub(crate) fn shell_cwd(&self) -> Option<String> {
         self.shell_cwd.clone()
+    }
+
+    /// The encoding the key encoder must speak right now: kitty flags of the
+    /// screen currently shown, ConPTY's win32-input-mode, DECCKM.
+    pub(crate) fn keyboard_mode(&self) -> TerminalKeyboardMode {
+        let screen = self.parser.screen();
+        TerminalKeyboardMode {
+            kitty_flags: self.keyboard.flags(screen.alternate_screen()),
+            win32_input: self.keyboard.win32_input,
+            application_cursor: screen.application_cursor(),
+        }
     }
 
     pub(crate) fn scroll_metrics(&mut self) -> TerminalScrollMetrics {
@@ -760,6 +800,69 @@ mod tests {
         let disabled = state.take_frame(false).expect("mouse mode disable frame");
         assert!(disabled.row_data.is_empty());
         assert_eq!(disabled.mouse.tracking, TerminalMouseTracking::None);
+    }
+
+    #[test]
+    fn kitty_keyboard_flags_are_answered_per_screen_and_dropped_with_the_alt_screen() {
+        let mut state = ScreenState::new(4, 20, 4096);
+        let responses = std::cell::RefCell::new(Vec::new());
+        let mut respond =
+            |kind: QueryKind, bytes: Vec<u8>| responses.borrow_mut().push((kind, bytes));
+
+        // crossterm's probe before anything is pushed: flags 0, then DA1.
+        state.process(b"\x1b[?u\x1b[c", &mut respond);
+        assert_eq!(
+            responses.borrow().clone(),
+            vec![
+                (QueryKind::KeyboardFlags, b"\x1b[?0u".to_vec()),
+                (QueryKind::PrimaryDeviceAttributes, b"\x1b[?1;2c".to_vec()),
+            ]
+        );
+        assert_eq!(state.keyboard_mode(), TerminalKeyboardMode::default());
+
+        // A TUI enters the alternate screen and pushes disambiguation.
+        responses.borrow_mut().clear();
+        state.process(b"\x1b[?1049h\x1b[>1u\x1b[?u", &mut respond);
+        assert_eq!(
+            responses.borrow().clone(),
+            vec![(QueryKind::KeyboardFlags, b"\x1b[?1u".to_vec())]
+        );
+        assert_eq!(state.keyboard_mode().kitty_flags, 1);
+        // Leaving the alternate screen (even without a pop: a crash) restores
+        // the main screen's legacy encoding.
+        state.process(b"\x1b[?1049l", &mut respond);
+        assert_eq!(state.keyboard_mode().kitty_flags, 0);
+        state.process(b"\x1b[?1049h", &mut respond);
+        assert_eq!(state.keyboard_mode().kitty_flags, 0, "the alt stack does not survive");
+
+        // Main screen: push, pop and DECCKM.
+        state.process(b"\x1b[?1049l\x1b[>5u\x1b[?1h", &mut respond);
+        assert_eq!(
+            state.keyboard_mode(),
+            TerminalKeyboardMode {
+                kitty_flags: 5,
+                win32_input: false,
+                application_cursor: true,
+            }
+        );
+        state.process(b"\x1b[<u\x1b[?1l", &mut respond);
+        assert_eq!(state.keyboard_mode(), TerminalKeyboardMode::default());
+
+        // ConPTY announces win32-input-mode: the answer must ride as character
+        // records or conhost drops it before the program sees it.
+        responses.borrow_mut().clear();
+        state.process(b"\x1b[?9001h\x1b[>1u\x1b[?u", &mut respond);
+        assert_eq!(
+            responses.borrow().clone(),
+            vec![(
+                QueryKind::KeyboardFlags,
+                crate::keyboard::win32_passthrough(b"\x1b[?1u")
+            )]
+        );
+        assert!(state.keyboard_mode().win32_input);
+        state.process(b"\x1bc", &mut respond);
+        assert_eq!(state.keyboard_mode().kitty_flags, 0, "RIS clears the stacks");
+        assert!(state.keyboard_mode().win32_input, "RIS is the program's, not ConPTY's");
     }
 
     #[test]

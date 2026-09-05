@@ -20,7 +20,7 @@ pub use app::{
     App, AppEffect, AppError, ContextMenuAction, ContextTarget, Mode, Modal, PromptKind,
     SearchState, SidebarState, ToastMessage,
 };
-pub use input::key_event_to_chord;
+pub use input::{key_event_to_chord, pane_key_chord};
 pub use link::{ClientMsg, FakeLink, ServerLink, ServerMsg};
 pub use mirror::{ApplyOutcome, MirrorCell, PaneMirror};
 pub use render::{protocol_style, ratatui_color, render_app};
